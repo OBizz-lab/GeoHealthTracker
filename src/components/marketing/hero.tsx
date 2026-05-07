@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, MapPin } from "lucide-react";
 
-import { buttonVariants } from "@/components/ui/button";
 import { hero } from "@/lib/copy";
 
 export function Hero() {
@@ -23,14 +22,14 @@ export function Hero() {
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Link
             href={hero.ctaPrimary.href}
-            className={buttonVariants({ size: "lg" })}
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-lg bg-blue-500 px-5 text-sm font-medium text-white transition-colors hover:bg-blue-600"
           >
             {hero.ctaPrimary.label}
-            <ArrowRight className="ml-1 h-4 w-4" />
+            <ArrowRight className="h-4 w-4" />
           </Link>
           <Link
             href={hero.ctaSecondary.href}
-            className={buttonVariants({ size: "lg", variant: "outline" })}
+            className="inline-flex h-11 items-center justify-center rounded-lg border border-border bg-background/40 px-5 text-sm font-medium text-zinc-100 transition-colors hover:bg-white/5"
           >
             {hero.ctaSecondary.label}
           </Link>

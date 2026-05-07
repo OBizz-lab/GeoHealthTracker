@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { colors, severityLabels, statusLabels } from "@/lib/design-tokens";
@@ -128,14 +128,10 @@ export function CaseDrawer({ report, onClose }: CaseDrawerProps) {
                 href={report.source_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={buttonVariants({
-                  variant: "outline",
-                  size: "sm",
-                  className: "mt-3",
-                })}
+                className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background/40 px-3 text-xs font-medium text-zinc-100 transition-colors hover:bg-white/5"
               >
                 Open source
-                <ExternalLink className="ml-1 h-3 w-3" />
+                <ExternalLink className="h-3 w-3" />
               </a>
             ) : null}
           </div>

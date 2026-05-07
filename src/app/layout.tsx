@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Activity } from "lucide-react";
 import "./globals.css";
 
-import { buttonVariants } from "@/components/ui/button";
 import { brand, nav } from "@/lib/copy";
 
 const geistSans = Geist({
@@ -67,7 +66,7 @@ function SiteHeader() {
         <div className="ml-auto flex items-center gap-2">
           <Link
             href={nav.cta.href}
-            className={buttonVariants({ size: "sm" })}
+            className="inline-flex h-8 items-center justify-center rounded-md bg-blue-500 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-600"
           >
             {nav.cta.label}
           </Link>

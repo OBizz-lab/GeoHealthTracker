@@ -3,7 +3,6 @@ import { Check } from "lucide-react";
 
 import { SiteFooter } from "@/components/marketing/site-footer";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { pricingTiers } from "@/lib/copy";
 
@@ -66,11 +65,12 @@ export default function PricingPage() {
                   <div className="mt-auto pt-2">
                     <Link
                       href={tier.href}
-                      className={buttonVariants({
-                        variant: tier.highlighted ? "default" : "outline",
-                        size: "lg",
-                        className: "w-full",
-                      })}
+                      className={
+                        "inline-flex h-11 w-full items-center justify-center rounded-lg px-5 text-sm font-medium transition-colors " +
+                        (tier.highlighted
+                          ? "bg-blue-500 text-white hover:bg-blue-600"
+                          : "border border-border bg-background/40 text-zinc-100 hover:bg-white/5")
+                      }
                     >
                       {tier.cta}
                     </Link>
