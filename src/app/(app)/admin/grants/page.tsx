@@ -61,7 +61,7 @@ export default function AdminGrantsPage() {
       .order("created_at", { ascending: false });
     if (filter === "pending") q = q.eq("status", "pending");
     const { data } = await q;
-    setSignups((data as PendingSignup[]) ?? []);
+    setSignups((data as unknown as PendingSignup[]) ?? []);
   }, [filter, isAdmin]);
 
   useEffect(() => { load(); }, [load]);

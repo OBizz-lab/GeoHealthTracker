@@ -115,7 +115,11 @@ export async function fetchPublishedCases(): Promise<Report[]> {
     return [];
   }
 
-  return (data as DbCase[])
+  // Cast through `unknown` because Supabase's typed select infers relation
+  // joins (`ingestion_sources(name)`) as arrays, while DbCase models them
+  // as a single nullable object. Going through unknown is the documented
+  // fix for "neither type sufficiently overlaps" errors.
+  return (data as unknown as DbCase[])
     .map(dbCaseToReport)
     .filter((r): r is Report => r !== null);
 }
