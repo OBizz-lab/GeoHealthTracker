@@ -11,8 +11,9 @@ import { StatsStrip }       from "@/components/map/stats-strip";
 import { LiveSignalStrip }  from "@/components/map/live-signal-strip";
 import { CaseDrawer }       from "@/components/map/case-drawer";
 import { MentionsDrawer }   from "@/components/map/mentions-drawer";
+import { ExposureDrawer }   from "@/components/map/exposure-drawer";
 import { fetchPublishedCases } from "@/lib/supabase/cases";
-import type { CountryMentions } from "@/components/map/map-view";
+import type { CountryMentions, CountryExposure } from "@/components/map/map-view";
 import type { Report, ReportStatus } from "@/lib/types";
 
 // Drawer width (desktop). Used for both stats-strip nudging and layout math.
@@ -107,19 +108,29 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
   // vice versa, so the user only ever sees one inspection panel at a time.
   const [selectedReport, setSelectedReport]       = useState<Report | null>(null);
   const [selectedMentions, setSelectedMentions]   = useState<CountryMentions | null>(null);
-  const drawerOpen = selectedReport !== null || selectedMentions !== null;
+  const [selectedExposure, setSelectedExposure]   = useState<CountryExposure | null>(null);
+  const drawerOpen =
+    selectedReport !== null || selectedMentions !== null || selectedExposure !== null;
 
   const handleSelectConfirmed = useCallback((r: Report) => {
-    setSelectedMentions(null); // close mention drawer if open
+    setSelectedMentions(null);
+    setSelectedExposure(null);
     setSelectedReport(r);
   }, []);
   const handleSelectMentions  = useCallback((c: CountryMentions) => {
-    setSelectedReport(null);   // close case drawer if open
+    setSelectedReport(null);
+    setSelectedExposure(null);
     setSelectedMentions(c);
+  }, []);
+  const handleSelectExposure  = useCallback((c: CountryExposure) => {
+    setSelectedReport(null);
+    setSelectedMentions(null);
+    setSelectedExposure(c);
   }, []);
   const closeAllDrawers = useCallback(() => {
     setSelectedReport(null);
     setSelectedMentions(null);
+    setSelectedExposure(null);
   }, []);
 
   // Esc closes whichever drawer is open
@@ -226,23 +237,32 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
     });
   }, [reports, timeRange, activeStatuses, activeStrains, activeSources, activeRegion, allSources]);
 
-  // ── Stats — confirmed cases drive Cases / Fatalities / Active regions.
-  // News mentions are counted separately so they don't inflate fatality totals.
+  // ── Stats — confirmed cases drive Cases / Fatalities. News mentions are
+  // counted separately so they don't inflate fatality totals. Exposed-kind
+  // rows (surveillance follow-up countries) contribute to Active regions but
+  // never to Total cases / Fatalities.
   const confirmed = useMemo(() => filtered.filter((r) => r.kind === "confirmed"), [filtered]);
   const mentions  = useMemo(() => filtered.filter((r) => r.kind === "mention"),   [filtered]);
+  const exposed   = useMemo(() => filtered.filter((r) => r.kind === "exposed"),   [filtered]);
 
-  const totalCases    = useMemo(() => confirmed.reduce((s, r) => s + r.case_count, 0), [confirmed]);
-  const fatalities    = useMemo(
-    () =>
-      confirmed
-        .filter((r) => r.status === "fatal")
-        .reduce((s, r) => s + r.case_count, 0),
+  // CASE_COUNT_METHODOLOGY.md §2 #2 + §4.1: case_count already includes any
+  // deceased; fatality_count is a subset. Never sum the two together.
+  const totalCases = useMemo(
+    () => confirmed.reduce((s, r) => s + r.case_count, 0),
     [confirmed],
   );
-  const activeRegions = useMemo(
-    () => new Set(confirmed.map((r) => r.country).filter((c) => c && c !== "ZZ")).size,
+  const fatalities = useMemo(
+    () => confirmed.reduce((s, r) => s + r.fatality_count, 0),
     [confirmed],
   );
+  const activeRegions = useMemo(() => {
+    // Distinct countries across confirmed cases AND surveillance follow-up
+    // (exposed) countries. A country counts once regardless of how many rows.
+    const set = new Set<string>();
+    for (const r of confirmed) if (r.country && r.country !== "ZZ") set.add(r.country);
+    for (const r of exposed)   if (r.country && r.country !== "ZZ") set.add(r.country);
+    return set.size;
+  }, [confirmed, exposed]);
   const mentionCount  = mentions.length;
   const lastUpdatedLabel = formatRelative(lastFetchedAt);
 
@@ -281,6 +301,7 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
             showCountryHeatmap={showHeatmap}
             onSelectConfirmed={handleSelectConfirmed}
             onSelectMentions={handleSelectMentions}
+            onSelectExposure={handleSelectExposure}
           />
 
           {/* ── Stats strip — top center of the map area. Because the
@@ -371,6 +392,14 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
               <MentionsDrawer country={selectedMentions} onClose={closeAllDrawers} />
             </div>
           )}
+          {selectedExposure && (
+            <div
+              className="pointer-events-auto absolute z-30 md:hidden"
+              style={{ left: 0, right: 0, bottom: 40, height: "65vh", maxHeight: "65vh" }}
+            >
+              <ExposureDrawer country={selectedExposure} onClose={closeAllDrawers} />
+            </div>
+          )}
         </div>
 
         {/* ── Desktop right drawer — flex sibling, pushes the map ───────────
@@ -388,6 +417,9 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
           )}
           {selectedMentions && (
             <MentionsDrawer country={selectedMentions} onClose={closeAllDrawers} />
+          )}
+          {selectedExposure && (
+            <ExposureDrawer country={selectedExposure} onClose={closeAllDrawers} />
           )}
         </div>
       </div>

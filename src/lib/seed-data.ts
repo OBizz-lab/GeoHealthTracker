@@ -1,6 +1,13 @@
 import type { Report } from "./types";
 
-export const seedReports: Report[] = [
+// Seed rows pre-date the fatality_count column. Each row's status is the
+// row's worst outcome (no per-row aggregation across outcomes), so deriving
+// fatality_count from status preserves the methodology's principle #2 without
+// hand-editing 25 rows. New aggregated rows (Pattern A in §4.2) must set
+// fatality_count explicitly via the DB.
+type RawSeed = Omit<Report, "fatality_count">;
+
+const rawSeedReports: RawSeed[] = [
   {
     kind: "confirmed",
     id: "rpt_001",
@@ -418,3 +425,8 @@ export const seedReports: Report[] = [
     condition: "Salmonellosis",
   },
 ];
+
+export const seedReports: Report[] = rawSeedReports.map((r) => ({
+  ...r,
+  fatality_count: r.status === "fatal" ? r.case_count : 0,
+}));

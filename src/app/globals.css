@@ -243,6 +243,17 @@
 .mapboxgl-ctrl-group button:last-child { border-bottom: none !important; }
 .mapboxgl-ctrl-group button:hover { background: var(--bg-overlay) !important; }
 .mapboxgl-ctrl-icon { filter: invert(0.85) brightness(1.1); }
+
+/* On mobile, the StatsStrip occupies the top of the map and would otherwise
+   sit on top of the Mapbox zoom controls. Push the top-right control cluster
+   below the strip (plus iOS safe-area) so the +/- buttons stay reachable. */
+@media (max-width: 767px) {
+  .mapboxgl-ctrl-top-right {
+    top: calc(80px + env(safe-area-inset-top, 0px)) !important;
+    z-index: 25;
+  }
+}
+
 .mapboxgl-ctrl-attrib {
   background: rgba(17, 23, 38, 0.7) !important;
   color: var(--text-tertiary) !important;

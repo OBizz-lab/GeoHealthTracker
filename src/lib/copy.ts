@@ -14,17 +14,17 @@ export const brand = {
 
 export const nav = {
   links: [
-    { label: "Map",     href: "/map"     },
-    { label: "Cases",   href: "/cases"   },
-    { label: "Sources", href: "/sources" },
-    { label: "About",   href: "/about"   },
-    { label: "Support", href: "/support" },
+    { label: "Map",      href: "/map"      },
+    { label: "Cases",    href: "/cases"    },
+    { label: "Symptoms", href: "/symptoms" },
+    { label: "Sources",  href: "/sources"  },
+    { label: "About",    href: "/about"    },
+    { label: "Support",  href: "/support"  },
   ],
-  // "Sign up free" per FREE_MIGRATION.md §2 / §12 acceptance criteria.
-  // Auth doesn't exist yet — points to the newsletter form on the home page
-  // until Phase 2 wires up signup.
-  cta:    { label: "Sign up free", href: "/#newsletter" },
-  signIn: { label: "Sign in",      href: "/admin/queue" },
+  // CTA → admin signup. Approved admins can add and confirm cases per the
+  // contributor flow.
+  cta:    { label: "Sign up free", href: "/admin/sign-up" },
+  signIn: { label: "Sign in",      href: "/admin/sign-in" },
 };
 
 export const hero = {
@@ -113,6 +113,10 @@ export const faqItems = [
     q: "Is HantaVirusTrack free?",
     a: "Yes — completely free for everyone. No paid tiers, no ads, no data sales. If you find it useful, you can leave a tip on the Support page.",
   },
+  {
+    q: "How do you count cases vs. deaths?",
+    a: "Each case row records both a total case count and a fatality count, where fatalities are a subset of cases — never a separate addend. We never sum the two together. Every count change is logged with its source URL and the moderator who approved it.",
+  },
 ];
 
 // Legacy short export retained for the /sources page that still consumes it.
@@ -150,11 +154,6 @@ export const supportPage = {
   taxBody:
     "Donations are not tax-deductible. HantaVirusTrack is operated by an individual, not a registered charity, and donations cannot be claimed as charitable contributions on your tax return. Buy Me a Coffee handles all payment processing on its side; we don't see your card details.",
   helpHeading: "Other ways to help",
-  help: [
-    { label: "Submit a case",            href: "/submit",     description: "Spotted a hantavirus case in the news that we haven't picked up? Sign up free and submit it." },
-    { label: "Apply as a researcher",    href: "/researcher", description: "Cover hantavirus professionally? Apply for elevated API access — free." },
-    { label: "Tell people who'd find it useful", href: "/about", description: "Public-health workers, regional newsrooms, researchers in endemic regions." },
-  ],
 };
 
 export const footer = {

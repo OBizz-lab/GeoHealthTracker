@@ -1,23 +1,11 @@
-import { Hero }           from "@/components/marketing/hero";
-import { StatsBand }       from "@/components/marketing/stats-band";
-import { FeatureGrid }     from "@/components/marketing/feature-grid";
-import { HowItWorks }      from "@/components/marketing/how-it-works";
-import { SourcesStrip }    from "@/components/marketing/sources-strip";
-import { FAQ }             from "@/components/marketing/faq";
-import { NewsletterForm }  from "@/components/marketing/newsletter-form";
-import { SiteFooter }      from "@/components/layout/site-footer";
+import { MapShell } from "@/components/map/map-shell";
 
 export default function HomePage() {
   return (
-    <>
-      <Hero />
-      <StatsBand />
-      <FeatureGrid />
-      <HowItWorks />
-      <SourcesStrip />
-      <FAQ />
-      <NewsletterForm />
-      <SiteFooter />
-    </>
+    <main className="relative flex-1 overflow-hidden">
+      <div className="absolute inset-0">
+        <MapShell mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN} />
+      </div>
+    </main>
   );
 }

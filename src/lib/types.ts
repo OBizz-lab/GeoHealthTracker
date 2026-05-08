@@ -2,8 +2,15 @@ export type ReportStatus = "confirmed" | "suspected" | "fatal" | "reported" | "r
 
 export type ReportSeverity = "low" | "moderate" | "high" | "critical";
 
-/** Discriminator: confirmed = official case data, mention = news/social signal. */
-export type ReportKind = "confirmed" | "mention";
+/**
+ * Discriminator:
+ *   confirmed = official case data (counts toward Total cases / Fatalities)
+ *   mention   = news/social signal (counts toward Mentions only)
+ *   exposed   = surveillance-follow-up country: a contact of a confirmed case
+ *               has returned home, but is NOT themselves a confirmed case.
+ *               Counts toward Active regions only — never toward case totals.
+ */
+export type ReportKind = "confirmed" | "mention" | "exposed";
 
 export interface Report {
   id: string;
@@ -18,7 +25,15 @@ export interface Report {
   reported_date: string;
   source_url?: string;
   source_name: string;
+  /** Total distinct people represented by this row. Includes any deceased. */
   case_count: number;
+  /**
+   * Subset of `case_count` who died. NEVER added to `case_count` in
+   * aggregations — see CASE_COUNT_METHODOLOGY.md §2.
+   */
+  fatality_count: number;
+  /** Optional outbreak-grouping identifier, e.g. 'mv-hondius-2026'. */
+  cluster_id?: string;
   notes: string;
   condition?: string;
 }

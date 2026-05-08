@@ -2,9 +2,9 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
-  output: "export",
-  images: { unoptimized: true },
-  basePath: "/GeoHealthTracker",
+  // Vercel deploy: full Next.js (server + serverless functions). The previous
+  // `output: "export"` + `basePath: "/GeoHealthTracker"` were for a GitHub
+  // Pages-style static deploy and would break custom-domain hosting.
   turbopack: {
     root: path.resolve(__dirname),
   },

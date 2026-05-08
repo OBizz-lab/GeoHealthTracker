@@ -15,8 +15,18 @@ function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {
   return <SheetPrimitive.Trigger data-slot="sheet-trigger" {...props} />
 }
 
-function SheetClose({ ...props }: SheetPrimitive.Close.Props) {
-  return <SheetPrimitive.Close data-slot="sheet-close" {...props} />
+function SheetClose({ nativeButton, ...props }: SheetPrimitive.Close.Props) {
+  // Default nativeButton=false because every call site we have passes a
+  // `render` element (Link/button). Base UI requires a real <button> when
+  // nativeButton is true; passing a <Link> would otherwise warn loudly.
+  // Caller can override by passing nativeButton={true} explicitly.
+  return (
+    <SheetPrimitive.Close
+      data-slot="sheet-close"
+      nativeButton={nativeButton ?? false}
+      {...props}
+    />
+  )
 }
 
 function SheetPortal({ ...props }: SheetPrimitive.Portal.Props) {

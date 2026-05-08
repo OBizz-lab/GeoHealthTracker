@@ -18,6 +18,8 @@ interface DbCase {
   reported_date: string | null;
   source_url: string | null;
   case_count: number;
+  fatality_count: number;
+  cluster_id: string | null;
   notes: string | null;
   strain: string | null;
   ingestion_sources: { name: string } | null;
@@ -48,9 +50,14 @@ function dbCaseToReport(row: DbCase): Report | null {
   // Skip ungeocoded rows — they can't be placed on the map
   if (row.location_lat == null || row.location_lng == null) return null;
 
+  const kind =
+    row.kind === "mention" ? "mention" :
+    row.kind === "exposed" ? "exposed" :
+    "confirmed";
+
   return {
     id: row.id,
-    kind: row.kind === "mention" ? "mention" : "confirmed",
+    kind,
     lat: row.location_lat,
     lng: row.location_lng,
     location_name: row.location_name ?? "Unknown",
@@ -62,6 +69,8 @@ function dbCaseToReport(row: DbCase): Report | null {
     source_url: row.source_url ?? undefined,
     source_name: row.ingestion_sources?.name ?? "Unknown Source",
     case_count: row.case_count,
+    fatality_count: row.fatality_count ?? 0,
+    cluster_id: row.cluster_id ?? undefined,
     notes: row.notes ?? "",
     condition: row.strain ?? undefined,
   };
@@ -90,6 +99,8 @@ export async function fetchPublishedCases(): Promise<Report[]> {
       reported_date,
       source_url,
       case_count,
+      fatality_count,
+      cluster_id,
       notes,
       strain,
       ingestion_sources ( name )

@@ -148,7 +148,7 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {/* Other ways to help */}
+        {/* Other ways to help — single CTA pointing at admin signup */}
         <div style={{ marginTop: 48 }}>
           <h2
             className="t-h2"
@@ -156,42 +156,43 @@ export default function SupportPage() {
           >
             {supportPage.helpHeading}
           </h2>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {supportPage.help.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="block transition-colors"
-                style={{
-                  padding: 16,
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border-default)",
-                  borderRadius: 8,
-                  textDecoration: "none",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 500,
-                    color: "var(--text-primary)",
-                    marginBottom: 4,
-                  }}
-                >
-                  {item.label} →
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    lineHeight: "18px",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  {item.description}
-                </div>
-              </Link>
-            ))}
-          </div>
+          <Link
+            href="/admin/sign-up"
+            className="block transition-colors"
+            style={{
+              padding: 20,
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-default)",
+              borderRadius: 10,
+              textDecoration: "none",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: "var(--text-primary)",
+                marginBottom: 10,
+              }}
+            >
+              Create an account to: →
+            </div>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: 18,
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                fontSize: 13,
+                lineHeight: "20px",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <li>Submit a case</li>
+              <li>Approve others to become contributors</li>
+            </ul>
+          </Link>
         </div>
       </section>
       <SiteFooter />

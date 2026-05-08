@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import Link from "next/link";
+
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 // =============================================================================
 // Admin Moderation Queue
@@ -17,6 +19,7 @@ interface PendingCase {
   status: string;
   strain: string | null;
   case_count: number;
+  fatality_count: number;
   reported_date: string | null;
   source_url: string | null;
   notes: string | null;
@@ -24,15 +27,14 @@ interface PendingCase {
   location_lat: number | null;
   location_lng: number | null;
   created_at: string;
+  submitted_by: string | null;
   ingestion_sources: { name: string; slug: string } | null;
 }
 
-function getClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  );
-}
+// Supabase client is now obtained from the shared singleton
+// (lib/supabase/client.ts). Calling createClient() per render — as this file
+// previously did — spawned a fresh GoTrueClient on every render and produced
+// the "Multiple GoTrueClient instances" warning storm.
 
 // ---------------------------------------------------------------------------
 // Sign-in form
@@ -47,7 +49,8 @@ function SignInForm({ onSignIn }: { onSignIn: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const supabase = getClient();
+    const supabase = getSupabaseClient();
+    if (!supabase) { setError("Supabase is not configured."); setLoading(false); return; }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setError(error.message);
     else onSignIn();
@@ -100,10 +103,12 @@ function SignInForm({ onSignIn }: { onSignIn: () => void }) {
 // ---------------------------------------------------------------------------
 function CaseCard({
   c,
+  currentUserId,
   onApprove,
   onReject,
 }: {
   c: PendingCase;
+  currentUserId: string | null;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
 }) {
@@ -112,6 +117,8 @@ function CaseCard({
     suspected: "bg-yellow-900 text-yellow-300",
     fatal: "bg-red-900 text-red-300",
   };
+  const isOwnSubmission =
+    !c.is_published && c.submitted_by != null && c.submitted_by === currentUserId;
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 shadow-sm">
@@ -139,14 +146,20 @@ function CaseCard({
 
           {/* Meta */}
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
-            <span>{c.case_count} case{c.case_count !== 1 ? "s" : ""}</span>
+            <span>
+              {c.case_count} case{c.case_count !== 1 ? "s" : ""}
+              {c.fatality_count > 0 && ` · ${c.fatality_count} fatal`}
+            </span>
             {c.reported_date && <span>{c.reported_date}</span>}
-            <span>Source: {c.ingestion_sources?.name ?? "unknown"}</span>
+            <span>Source: {c.ingestion_sources?.name ?? (c.submitted_by ? "community submission" : "unknown")}</span>
             {c.location_lat == null && (
               <span className="text-amber-500">⚠ Not geocoded</span>
             )}
             {c.is_published && (
               <span className="text-blue-400">● Published</span>
+            )}
+            {isOwnSubmission && (
+              <span className="text-amber-500">⚠ Your submission — another admin must approve</span>
             )}
           </div>
 
@@ -173,7 +186,13 @@ function CaseCard({
           {!c.is_published && (
             <button
               onClick={() => onApprove(c.id)}
-              className="rounded-lg bg-green-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-600"
+              disabled={isOwnSubmission}
+              title={isOwnSubmission ? "Another admin must approve your own submission" : undefined}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white ${
+                isOwnSubmission
+                  ? "bg-zinc-700 cursor-not-allowed opacity-60"
+                  : "bg-green-700 hover:bg-green-600"
+              }`}
             >
               ✓ Approve
             </button>
@@ -194,37 +213,67 @@ function CaseCard({
 // Main queue component
 // ---------------------------------------------------------------------------
 export function AdminQueue() {
-  const [session, setSession] = useState<unknown>(null);
+  const [session, setSession] = useState<{ user: { id: string } } | null>(null);
+  const [isApprovedAdmin, setIsApprovedAdmin] = useState<boolean | null>(null);
+  const [pendingSignupCount, setPendingSignupCount] = useState(0);
   const [cases, setCases] = useState<PendingCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"pending" | "published" | "all">("pending");
+  const [actionError, setActionError] = useState("");
 
-  const supabase = getClient();
+  const supabase = getSupabaseClient();
+  const currentUserId = session?.user.id ?? null;
 
-  // Check auth on mount
+  // Check auth + admin status on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    if (!supabase) { setLoading(false); return; }
+    let cancelled = false;
+    async function refresh() {
+      const { data } = await supabase!.auth.getSession();
+      const sess = (data.session as unknown as { user: { id: string } } | null) ?? null;
+      if (cancelled) return;
+      setSession(sess);
+      if (!sess) {
+        setIsApprovedAdmin(false);
+        setLoading(false);
+        return;
+      }
+      const { data: grant } = await supabase
+        .from("admin_grants")
+        .select("user_id")
+        .eq("user_id", sess.user.id)
+        .is("revoked_at", null)
+        .maybeSingle();
+      if (cancelled) return;
+      const approved = !!grant;
+      setIsApprovedAdmin(approved);
+      if (approved) {
+        const { count } = await supabase!
+          .from("admin_signups")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "pending");
+        if (!cancelled) setPendingSignupCount(count ?? 0);
+      }
       setLoading(false);
-    });
+    }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-    });
-    return () => subscription.unsubscribe();
+    refresh();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(refresh);
+    return () => { cancelled = true; subscription.unsubscribe(); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch cases when authed
+  // Fetch cases only when authed AND approved
   useEffect(() => {
-    if (!session) return;
+    if (!session || !isApprovedAdmin) return;
     loadCases();
-  }, [session, filter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [session, isApprovedAdmin, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCases() {
+    if (!supabase) return;
     setLoading(true);
     let q = supabase
       .from("cases")
-      .select(`id, location_name, country, state_province, status, strain, case_count, reported_date, source_url, notes, is_published, location_lat, location_lng, created_at, ingestion_sources(name, slug)`)
+      .select(`id, location_name, country, state_province, status, strain, case_count, fatality_count, reported_date, source_url, notes, is_published, location_lat, location_lng, created_at, submitted_by, ingestion_sources(name, slug)`)
       .order("created_at", { ascending: false })
       .limit(100);
 
@@ -237,11 +286,26 @@ export function AdminQueue() {
   }
 
   async function handleApprove(id: string) {
-    await supabase.from("cases").update({ is_published: true }).eq("id", id);
+    if (!supabase) return;
+    setActionError("");
+    const target = cases.find((c) => c.id === id);
+    if (target?.submitted_by && target.submitted_by === currentUserId) {
+      setActionError("You can't approve your own submission — another admin must do it.");
+      return;
+    }
+    const { error } = await supabase
+      .from("cases")
+      .update({ is_published: true })
+      .eq("id", id);
+    if (error) {
+      setActionError(error.message);
+      return;
+    }
     setCases((prev) => prev.map((c) => (c.id === id ? { ...c, is_published: true } : c)));
   }
 
   async function handleReject(id: string) {
+    if (!supabase) return;
     const c = cases.find((x) => x.id === id);
     if (c?.is_published) {
       // Unpublish instead of delete
@@ -254,6 +318,7 @@ export function AdminQueue() {
   }
 
   async function handleSignOut() {
+    if (!supabase) return;
     await supabase.auth.signOut();
     setSession(null);
     setCases([]);
@@ -261,7 +326,28 @@ export function AdminQueue() {
 
   // Not signed in
   if (!session && !loading) {
-    return <SignInForm onSignIn={() => supabase.auth.getSession().then(({ data }) => setSession(data.session))} />;
+    return <SignInForm onSignIn={() => supabase?.auth.getSession().then(({ data }) => setSession(data.session))} />;
+  }
+
+  // Signed in but not yet an approved admin → friendly nudge
+  if (session && isApprovedAdmin === false) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <h2 className="mb-3 text-xl font-semibold text-white">
+          Your account is pending approval
+        </h2>
+        <p className="mb-5 text-sm text-zinc-400">
+          You&apos;re signed in, but you don&apos;t have admin access yet.
+          Another admin needs to approve your application.
+        </p>
+        <Link
+          href="/admin/pending"
+          className="inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+        >
+          Check status →
+        </Link>
+      </div>
+    );
   }
 
   const pending = cases.filter((c) => !c.is_published).length;
@@ -277,6 +363,26 @@ export function AdminQueue() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Link
+            href="/admin/grants"
+            className="relative rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+          >
+            Admin grants
+            {pendingSignupCount > 0 && (
+              <span
+                className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white"
+                title={`${pendingSignupCount} pending application${pendingSignupCount === 1 ? "" : "s"}`}
+              >
+                {pendingSignupCount}
+              </span>
+            )}
+          </Link>
+          <Link
+            href="/admin/cookbook"
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800"
+          >
+            Cookbook
+          </Link>
           <button
             onClick={loadCases}
             className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
@@ -309,6 +415,15 @@ export function AdminQueue() {
         ))}
       </div>
 
+      {actionError && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-300"
+        >
+          {actionError}
+        </div>
+      )}
+
       {/* Cases list */}
       {loading ? (
         <div className="flex justify-center py-20">
@@ -324,6 +439,7 @@ export function AdminQueue() {
             <CaseCard
               key={c.id}
               c={c}
+              currentUserId={currentUserId}
               onApprove={handleApprove}
               onReject={handleReject}
             />

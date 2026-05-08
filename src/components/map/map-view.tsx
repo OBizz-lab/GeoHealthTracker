@@ -11,8 +11,10 @@ import type { Report, ReportStatus } from "@/lib/types";
 // Constants — DESIGN_DOC §5.2 / §5.4
 // ---------------------------------------------------------------------------
 const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
-const INIT_CENTER: [number, number] = [-98.5, 39.5]; // Continental US
-const INIT_ZOOM = 3.2;
+// World-centered default. Slightly north of the equator so the visual mass of
+// landmass sits comfortably in frame. We never request the user's location.
+const INIT_CENTER: [number, number] = [0, 20];
+const INIT_ZOOM = 1.5;
 
 const STATUS_COLOR: Record<ReportStatus, string> = {
   fatal:     "#C92A4F",
@@ -101,6 +103,48 @@ function toMentionsGeoJSON(mentions: Map<string, CountryMentions>) {
         count: m.count,
       },
       geometry: { type: "Point" as const, coordinates: m.centroid },
+    })),
+  };
+}
+
+// =============================================================================
+// Exposure aggregation — group `kind='exposed'` rows by country (surveillance
+// follow-up countries: a contact of a confirmed case has returned home).
+// One marker per country at its centroid, distinct from confirmed/mention
+// visuals. Click → ExposureDrawer.
+// =============================================================================
+export interface CountryExposure {
+  iso:       string;
+  centroid:  [number, number];
+  count:     number;
+  reports:   Report[];
+}
+
+export function aggregateExposureByCountry(reports: Report[]): Map<string, CountryExposure> {
+  const out = new Map<string, CountryExposure>();
+  for (const r of reports) {
+    if (r.kind !== "exposed") continue;
+    if (!r.country || r.country === "ZZ") continue;
+    const centroid = centroidFor(r.country);
+    if (!centroid) continue;
+    const cur = out.get(r.country);
+    if (!cur) {
+      out.set(r.country, { iso: r.country, centroid, count: 1, reports: [r] });
+    } else {
+      cur.count += 1;
+      cur.reports.push(r);
+    }
+  }
+  return out;
+}
+
+function toExposureGeoJSON(exposures: Map<string, CountryExposure>) {
+  return {
+    type: "FeatureCollection" as const,
+    features: Array.from(exposures.values()).map((e) => ({
+      type: "Feature" as const,
+      properties: { iso: e.iso, count: e.count },
+      geometry: { type: "Point" as const, coordinates: e.centroid },
     })),
   };
 }
@@ -196,6 +240,8 @@ interface MapViewProps {
   onSelectConfirmed?: (report: Report) => void;
   /** Called when the user clicks a per-country news-mention marker. */
   onSelectMentions?:  (country: CountryMentions) => void;
+  /** Called when the user clicks a per-country exposure-follow-up marker. */
+  onSelectExposure?:  (country: CountryExposure) => void;
 }
 
 export function MapView({
@@ -204,19 +250,23 @@ export function MapView({
   showCountryHeatmap,
   onSelectConfirmed,
   onSelectMentions,
+  onSelectExposure,
 }: MapViewProps) {
   const containerRef        = useRef<HTMLDivElement | null>(null);
   const mapRef              = useRef<mapboxgl.Map | null>(null);
   const reportByIdRef       = useRef<Map<string, Report>>(new Map());
   const countryStatsRef     = useRef<Map<string, CountryStats>>(new Map());
   const countryMentionsRef  = useRef<Map<string, CountryMentions>>(new Map());
+  const countryExposureRef  = useRef<Map<string, CountryExposure>>(new Map());
   const hoverPopupRef       = useRef<mapboxgl.Popup | null>(null);
   // Refs for callbacks so the once-installed click handlers always see the
   // current shell-owned setters (avoids stale-closure bugs on re-render).
   const onSelectConfirmedRef = useRef(onSelectConfirmed);
   const onSelectMentionsRef  = useRef(onSelectMentions);
+  const onSelectExposureRef  = useRef(onSelectExposure);
   useEffect(() => { onSelectConfirmedRef.current = onSelectConfirmed; }, [onSelectConfirmed]);
   useEffect(() => { onSelectMentionsRef.current  = onSelectMentions;  }, [onSelectMentions]);
+  useEffect(() => { onSelectExposureRef.current  = onSelectExposure;  }, [onSelectExposure]);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
@@ -228,12 +278,15 @@ export function MapView({
   const casesGeoJSON       = useMemo(() => toCasesGeoJSON(reports), [reports]);
   const countryStats       = useMemo(() => aggregateByCountry(reports), [reports]);
   const countryMentions    = useMemo(() => aggregateMentionsByCountry(reports), [reports]);
+  const countryExposure    = useMemo(() => aggregateExposureByCountry(reports), [reports]);
   const mentionsGeoJSON    = useMemo(() => toMentionsGeoJSON(countryMentions), [countryMentions]);
+  const exposureGeoJSON    = useMemo(() => toExposureGeoJSON(countryExposure),  [countryExposure]);
   const countryExpressions = useMemo(() => buildCountryExpressions(countryStats), [countryStats]);
 
   // Keep refs fresh for closure-based event handlers
   useEffect(() => { countryStatsRef.current    = countryStats;    }, [countryStats]);
   useEffect(() => { countryMentionsRef.current = countryMentions; }, [countryMentions]);
+  useEffect(() => { countryExposureRef.current = countryExposure; }, [countryExposure]);
 
   // ── Init map ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -252,7 +305,6 @@ export function MapView({
     map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
     map.addControl(new mapboxgl.ScaleControl({ unit: "imperial" }), "bottom-left");
-    map.addControl(new mapboxgl.FullscreenControl(), "top-right");
 
     map.on("load", () => {
       const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
@@ -398,7 +450,48 @@ export function MapView({
         },
       });
 
-      for (const layer of ["clusters", "unclustered-case", "mention-marker"]) {
+      // ── Exposure markers (per-country surveillance follow-up) ──────────
+      // Subdued teal/grey dashed ring — visually distinct from confirmed
+      // markers (red/orange) and mention markers (cyan). Renders ABOVE the
+      // country choropleth so it remains clickable when the country is also
+      // confirmed-shaded.
+      map.addSource("exposure", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      map.addLayer({
+        id: "exposure-halo", type: "circle", source: "exposure",
+        paint: {
+          "circle-color":   "#7BA0A8",
+          "circle-radius":  ["interpolate", ["linear"], ["zoom"], 1, 12, 6, 18],
+          "circle-opacity": 0.10,
+        },
+      });
+      map.addLayer({
+        id: "exposure-marker", type: "circle", source: "exposure",
+        paint: {
+          "circle-color":        "rgba(123,160,168,0.08)",
+          "circle-stroke-color": "#7BA0A8",
+          "circle-stroke-width": 1.5,
+          "circle-radius":       ["interpolate", ["linear"], ["zoom"], 1, 8, 6, 13],
+          "circle-opacity":      1,
+        },
+      });
+      map.addLayer({
+        id: "exposure-label", type: "symbol", source: "exposure",
+        layout: {
+          "text-field": "👁",
+          "text-size":  ["interpolate", ["linear"], ["zoom"], 1, 9, 6, 13],
+          "text-allow-overlap": true,
+        },
+        paint: {
+          "text-color":      "#7BA0A8",
+          "text-halo-color": "rgba(10,14,26,0.85)",
+          "text-halo-width": 1.5,
+        },
+      });
+
+      for (const layer of ["clusters", "unclustered-case", "mention-marker", "exposure-marker"]) {
         map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
       }
@@ -441,6 +534,21 @@ export function MapView({
         if (!country) return;
         onSelectMentionsRef.current?.(country);
         // Same drawer-nudge treatment as confirmed markers
+        const projected = map.project(country.centroid);
+        map.easeTo({
+          center: map.unproject([projected.x + 60, projected.y]),
+          zoom:   Math.max(map.getZoom(), 4),
+          duration: 800,
+        });
+      });
+
+      // ── Exposure-marker click → open exposure drawer ─────────────────────
+      map.on("click", "exposure-marker", (e) => {
+        const iso = e.features?.[0]?.properties?.iso as string | undefined;
+        if (!iso) return;
+        const country = countryExposureRef.current.get(iso);
+        if (!country) return;
+        onSelectExposureRef.current?.(country);
         const projected = map.project(country.centroid);
         map.easeTo({
           center: map.unproject([projected.x + 60, projected.y]),
@@ -513,17 +621,33 @@ export function MapView({
     // so the filter rail expanding or the drawer opening re-flows the map
     // instead of leaving black bars or clipping. Mapbox needs an explicit
     // .resize() call whenever its container's box changes.
+    // Track rAF handles so we can cancel any pending resize calls during
+    // cleanup. Without this, an in-flight rAF can fire after map.remove()
+    // and crash with "Cannot set properties of undefined (setting 'width')".
+    let pendingRaf: number | null = null;
+    let disposed = false;
+
     let resizeObserver: ResizeObserver | null = null;
     if (containerRef.current) {
       resizeObserver = new ResizeObserver(() => {
-        // requestAnimationFrame so resize happens after the CSS transition
-        // settles a tick — avoids resize-during-layout jank.
-        requestAnimationFrame(() => map.resize());
+        if (pendingRaf != null) cancelAnimationFrame(pendingRaf);
+        pendingRaf = requestAnimationFrame(() => {
+          pendingRaf = null;
+          // Guard: skip if the component unmounted between scheduling and
+          // executing this frame; or if the map was removed.
+          if (disposed || !mapRef.current) return;
+          mapRef.current.resize();
+        });
       });
       resizeObserver.observe(containerRef.current);
     }
 
     return () => {
+      disposed = true;
+      if (pendingRaf != null) {
+        cancelAnimationFrame(pendingRaf);
+        pendingRaf = null;
+      }
       resizeObserver?.disconnect();
       hoverPopupRef.current?.remove();
       hoverPopupRef.current = null;
@@ -543,7 +667,10 @@ export function MapView({
     (map.getSource("mentions") as mapboxgl.GeoJSONSource | undefined)?.setData(
       mentionsGeoJSON as Parameters<mapboxgl.GeoJSONSource["setData"]>[0],
     );
-  }, [casesGeoJSON, mentionsGeoJSON, mapReady]);
+    (map.getSource("exposure") as mapboxgl.GeoJSONSource | undefined)?.setData(
+      exposureGeoJSON as Parameters<mapboxgl.GeoJSONSource["setData"]>[0],
+    );
+  }, [casesGeoJSON, mentionsGeoJSON, exposureGeoJSON, mapReady]);
 
   // ── Sync country choropleth ───────────────────────────────────────────────
   useEffect(() => {

@@ -67,13 +67,30 @@ function relativeFromIso(iso: string | null): string {
 // Component
 // =============================================================================
 export function LiveSignalStrip() {
-  const [{ tab, expanded }, setState] = useState<StoredState>(() => readStoredState());
+  // Always start with the SSR-safe default. Reading localStorage during the
+  // useState initializer caused a hydration mismatch — the server rendered
+  // "news/collapsed" but the client (with a saved session) rendered
+  // "reddit/expanded", and React tore the whole tree down. Hydrate from
+  // localStorage AFTER mount via the useEffect below.
+  const [{ tab, expanded }, setState] = useState<StoredState>({ tab: "news", expanded: false });
+  const [hydrated, setHydrated]       = useState(false);
   const [feed, setFeed]               = useState<SignalFeed | null>(null);
   const [error, setError]             = useState<Error | null>(null);
   const [loading, setLoading]         = useState(true);
   const containerRef                  = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => { writeStoredState({ tab, expanded }); }, [tab, expanded]);
+  // One-time hydration from localStorage (post-mount → no SSR mismatch).
+  useEffect(() => {
+    setState(readStoredState());
+    setHydrated(true);
+  }, []);
+
+  // Persist state changes — but only AFTER initial hydration, otherwise we'd
+  // overwrite the saved value with the SSR default on first render.
+  useEffect(() => {
+    if (!hydrated) return;
+    writeStoredState({ tab, expanded });
+  }, [tab, expanded, hydrated]);
 
   const load = useCallback(async () => {
     try {
@@ -170,7 +187,6 @@ export function LiveSignalStrip() {
             active={tab === "reddit"}
             accent="amber"
             onClick={() => toggleTab("reddit")}
-            badge={signalCopy.tab_reddit_chip}
             ariaControls="signal-panel"
           />
         </div>
