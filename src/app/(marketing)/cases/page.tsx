@@ -1,0 +1,224 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ExternalLink, Search } from "lucide-react";
+import { format, parseISO } from "date-fns";
+
+import { SiteFooter }            from "@/components/layout/site-footer";
+import { fetchPublishedCases }   from "@/lib/supabase/cases";
+import { pillClass, statusLabels } from "@/lib/design-tokens";
+import type { Report }           from "@/lib/types";
+
+// =============================================================================
+// Cases list — sortable / filterable table view of the same DB rows
+// =============================================================================
+
+export default function CasesListPage() {
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPublishedCases()
+      .then((rs) => { if (!cancelled) setReports(rs); })
+      .catch(() => { /* silent */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const sorted = useMemo(() => {
+    const q = search.toLowerCase();
+    return [...reports]
+      .sort((a, b) => new Date(b.reported_date).getTime() - new Date(a.reported_date).getTime())
+      .filter((r) => {
+        if (!q) return true;
+        return (
+          r.location_name.toLowerCase().includes(q) ||
+          r.country.toLowerCase().includes(q) ||
+          r.notes.toLowerCase().includes(q) ||
+          r.source_name.toLowerCase().includes(q)
+        );
+      });
+  }, [reports, search]);
+
+  return (
+    <>
+      <section style={{ padding: "64px 64px", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
+        <div className="t-cap t-up" style={{ color: "var(--text-secondary)" }}>
+          Cases
+        </div>
+        <h1
+          className="t-display"
+          style={{ margin: "12px 0 16px", color: "var(--text-primary)" }}
+        >
+          All published cases.
+        </h1>
+        <p
+          style={{
+            fontSize:    15,
+            lineHeight:  "24px",
+            maxWidth:    700,
+            marginBottom: 32,
+            color:       "var(--text-secondary)",
+          }}
+        >
+          Every case here has a citation back to its source. Click any row to
+          jump to the case on the live map.
+        </p>
+
+        {/* Search */}
+        <div
+          className="flex items-center"
+          style={{
+            gap:          8,
+            background:   "var(--bg-surface)",
+            border:       "1px solid var(--border-default)",
+            borderRadius: 8,
+            padding:      "9px 12px",
+            maxWidth:     480,
+            marginBottom: 24,
+          }}
+        >
+          <Search className="h-4 w-4" style={{ color: "var(--text-tertiary)" }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by location, country, source, or notes…"
+            style={{
+              flex:       1,
+              background: "transparent",
+              border:     "none",
+              outline:    "none",
+              fontSize:   13,
+              color:      "var(--text-primary)",
+            }}
+          />
+        </div>
+
+        {/* Table / list */}
+        {loading ? (
+          <div className="flex flex-col" style={{ gap: 8 }}>
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="skel" style={{ height: 56 }} />
+            ))}
+          </div>
+        ) : sorted.length === 0 ? (
+          <div
+            className="text-center"
+            style={{
+              padding:      80,
+              border:       "1px dashed var(--border-default)",
+              borderRadius: 12,
+              color:        "var(--text-tertiary)",
+            }}
+          >
+            No cases match your filters.
+          </div>
+        ) : (
+          <div
+            style={{
+              background:   "var(--bg-surface)",
+              border:       "1px solid var(--border-default)",
+              borderRadius: 8,
+              overflow:     "hidden",
+            }}
+          >
+            {/* Header */}
+            <div
+              className="grid items-center"
+              style={{
+                gridTemplateColumns: "minmax(0,2fr) 110px 100px 120px 80px 32px",
+                padding:        "12px 16px",
+                background:     "var(--bg-overlay)",
+                borderBottom:   "1px solid var(--border-subtle)",
+                gap:            12,
+              }}
+            >
+              {["Location", "Status", "Cases", "Source", "Date", ""].map((h) => (
+                <div
+                  key={h}
+                  className="t-cap t-up"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  {h}
+                </div>
+              ))}
+            </div>
+
+            {/* Rows */}
+            {sorted.map((r) => {
+              const date = (() => {
+                try { return format(parseISO(r.reported_date), "MMM d, yyyy"); }
+                catch { return r.reported_date; }
+              })();
+              return (
+                <Link
+                  key={r.id}
+                  href={`/map?case=${encodeURIComponent(r.id)}`}
+                  className="grid items-center transition-colors"
+                  style={{
+                    gridTemplateColumns: "minmax(0,2fr) 110px 100px 120px 80px 32px",
+                    padding:    "14px 16px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    color:      "var(--text-primary)",
+                    gap:        12,
+                  }}
+                >
+                  <div className="flex flex-col" style={{ minWidth: 0 }}>
+                    <span style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.location_name}
+                    </span>
+                    {r.country && r.country !== "ZZ" && (
+                      <span className="t-cap" style={{ color: "var(--text-secondary)" }}>
+                        {r.state_province ? `${r.state_province}, ${r.country}` : r.country}
+                      </span>
+                    )}
+                  </div>
+
+                  <span className={`pill ${pillClass(r.status)}`} style={{ alignSelf: "center" }}>
+                    {statusLabels[r.status]}
+                  </span>
+
+                  <span
+                    className="num"
+                    style={{ fontSize: 13, color: "var(--text-secondary)" }}
+                  >
+                    {r.case_count.toLocaleString()}
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize:    12,
+                      color:       "var(--text-secondary)",
+                      overflow:    "hidden",
+                      textOverflow:"ellipsis",
+                      whiteSpace:  "nowrap",
+                    }}
+                  >
+                    {r.source_name}
+                  </span>
+
+                  <span
+                    className="t-mono"
+                    style={{ color: "var(--text-secondary)", fontSize: 11 }}
+                  >
+                    {date}
+                  </span>
+
+                  <ExternalLink
+                    className="h-3.5 w-3.5"
+                    style={{ color: "var(--text-tertiary)" }}
+                  />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </section>
+      <SiteFooter />
+    </>
+  );
+}

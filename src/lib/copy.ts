@@ -1,156 +1,195 @@
+// =============================================================================
+// HantaVirusTrack copy — canonical source of strings (DESIGN_DOC)
+// =============================================================================
+
 export const brand = {
-  name: "GeoHealthTracker",
-  tagline: "Real-time global health intelligence on a single map",
+  name: "HantaVirusTrack",
+  tagline: "Hantavirus surveillance, sourced and live",
   shortDescription:
-    "Track emerging public health signals across regions with verified, timestamped data.",
+    "Confirmed and suspected hantavirus cases from CDC, WHO, ECDC, PAHO, ProMED, and state health departments — on one map, updated every fifteen minutes.",
+  domain: "hantavirustrack.org",
+  email: "omar@hantavirustrack.org",
 };
 
 export const nav = {
   links: [
-    { label: "Live Map", href: "/map" },
-    { label: "About", href: "/about" },
-    { label: "Pricing", href: "/pricing" },
+    { label: "Map",      href: "/map"      },
+    { label: "Cases",    href: "/cases"    },
+    { label: "Sources",  href: "/sources"  },
+    { label: "About",    href: "/about"    },
+    { label: "Pricing",  href: "/pricing"  },
   ],
-  cta: { label: "Open Map", href: "/map" },
+  cta:    { label: "Subscribe →", href: "/pricing" },
+  signIn: { label: "Sign in",     href: "/admin/queue" },
 };
 
 export const hero = {
-  eyebrow: "Public health visualization",
-  title: "See where it's happening, before it spreads",
+  badge:    "Live · 9 sources · 1,247 cases tracked",
+  title:    "Hantavirus surveillance, sourced and live.",
   subtitle:
-    "GeoHealthTracker aggregates verified reports from health agencies, peer-reviewed sources, and on-the-ground partners onto an interactive map you can explore in seconds.",
-  ctaPrimary: { label: "Explore the live map", href: "/map" },
-  ctaSecondary: { label: "How it works", href: "/about" },
+    "Confirmed and suspected hantavirus cases from CDC, WHO, ECDC, PAHO, ProMED, and state health departments — on one map, updated every fifteen minutes.",
+  ctaPrimary:   { label: "View live map →",     href: "/map" },
+  ctaSecondary: { label: "How we source data",  href: "/sources" },
 };
 
-export const stats = [
-  { label: "Active reports", value: "2,847" },
-  { label: "Countries covered", value: "94" },
-  { label: "Verified sources", value: "312" },
-  { label: "Updates per day", value: "1.2K" },
+export const statsBand = [
+  { label: "Cases tracked",     value: "1,247"   },
+  { label: "Sources monitored", value: "9"       },
+  { label: "Countries covered", value: "14"      },
+  { label: "Last updated",      value: "12m ago" },
 ];
 
 export const features = [
   {
-    title: "Interactive global map",
+    title: "Live map",
     description:
-      "Pan, zoom, and filter through reports with smooth Mapbox rendering. Color-coded markers show status at a glance.",
+      "Every published case as a marker. Cluster, filter, and zoom across continents.",
     icon: "Globe2",
   },
   {
-    title: "Verified sourcing",
+    title: "Verified sources",
     description:
-      "Every data point links back to a primary source — government bulletin, peer-reviewed publication, or vetted partner.",
-    icon: "ShieldCheck",
+      "Official health agencies only. Each case links back to its source. Human moderation before publish.",
+    icon: "FlaskConical",
   },
   {
-    title: "Watch zones & alerts",
+    title: "Custom alerts",
     description:
-      "Draw a region of interest. Get email notifications when new reports surface within it.",
+      "Watch zones around regions you care about. Email, SMS, and browser push.",
     icon: "BellRing",
-  },
-  {
-    title: "Historical timeline",
-    description:
-      "Scrub through time to see how clusters emerge, peak, and resolve. Export windows for further analysis.",
-    icon: "Clock",
-  },
-  {
-    title: "Open API",
-    description:
-      "Pull the same data into your own dashboards, research notebooks, or operational tools via a REST endpoint.",
-    icon: "Code2",
-  },
-  {
-    title: "Privacy-respecting",
-    description:
-      "We aggregate location-level signals only. No personal data, no patient information, no surveillance.",
-    icon: "Lock",
   },
 ];
 
+export const howItWorks = [
+  { n: "01", title: "Sources",    description: "CDC, WHO, ECDC, PAHO, ProMED, and state DOHs polled on cadence." },
+  { n: "02", title: "Normalize",  description: "Per-source parsers map raw entries to a canonical case shape." },
+  { n: "03", title: "Verify",     description: "Every case enters a moderation queue. A human approves before publish." },
+  { n: "04", title: "Publish",    description: "Live on the map within minutes of verification." },
+];
+
+export const sourcesStrip = [
+  "CDC NNDSS", "WHO DON", "ECDC", "PAHO", "ProMED",
+  "NM DOH", "AZ DHS", "CO DPHE", "UT DOH",
+];
+
 export const newsletter = {
-  title: "Weekly briefing in your inbox",
-  description:
-    "A short, ad-free summary of notable health signals from the past week. Unsubscribe anytime.",
+  title:       "Get the weekly digest.",
+  description: "Notable cases and source updates, every Monday. Free.",
   placeholder: "you@example.com",
-  cta: "Subscribe",
-  success: "Thanks — check your inbox to confirm.",
+  cta:         "Subscribe",
+  success:     "Check your inbox to confirm.",
 };
 
 export const pricingTiers = [
   {
-    name: "Public",
-    price: "Free",
-    description: "For curious citizens, journalists, and students.",
+    id:    "free",
+    name:  "Free",
+    price: { monthly: "$0",     annual: "$0"      },
+    save:  null,
+    description: "Live map, all published cases, weekly digest.",
     features: [
-      "Full live map access",
-      "Public report archive",
-      "Weekly newsletter",
-      "Read-only API (60 req/hr)",
+      "Full map access",
+      "All published cases",
+      "Weekly email digest",
+      "Read-only",
     ],
-    cta: "Get started",
+    cta:  "Choose Free",
     href: "/map",
   },
   {
-    name: "Researcher",
-    price: "$24/mo",
-    description: "For academics, NGOs, and independent researchers.",
+    id:    "watch",
+    name:  "Watch",
+    price: { monthly: "$7/mo",  annual: "$60/yr"  },
+    save:  { monthly: null,     annual: "save $24" },
+    description: "Geo-targeted alerts via email, SMS, and push.",
     features: [
-      "Everything in Public",
-      "Historical timeline export",
-      "10 watch zones with alerts",
-      "API: 1,000 req/hr",
-      "Citation-ready data exports",
+      "Up to 5 watch zones",
+      "Real-time alerts (email/SMS/push)",
+      "Configurable thresholds",
+      "Faster cadence (15 min)",
+      "Full historical data + CSV",
     ],
-    cta: "Start trial",
-    href: "/pricing",
+    cta:  "Choose Watch",
+    href: "/map",
     highlighted: true,
   },
   {
-    name: "Operations",
-    price: "Contact us",
-    description:
-      "For health agencies, response teams, and enterprise platforms.",
+    id:    "pro",
+    name:  "Pro",
+    price: { monthly: "$99/mo", annual: "$990/yr" },
+    save:  { monthly: null,     annual: "save $198" },
+    description: "API, embeds, and raw exports for institutions.",
     features: [
-      "Everything in Researcher",
-      "Unlimited watch zones",
-      "Webhook + Slack integrations",
-      "Custom data feeds",
-      "SLA + dedicated support",
+      "Everything in Watch",
+      "API access (rate-limited)",
+      "Embed widgets",
+      "Raw data exports",
+      "Priority support",
     ],
-    cta: "Talk to us",
-    href: "mailto:hello@geohealthtracker.example",
+    cta:  "Choose Pro",
+    href: "mailto:omar@hantavirustrack.org",
+  },
+];
+
+export const faqItems = [
+  {
+    q: "Where does the data come from?",
+    a: "Every case originates from an official health agency or surveillance feed: CDC NNDSS, WHO DON, ECDC, PAHO, ProMED-mail, and US state health departments. Each case has a direct link back to its source.",
+  },
+  {
+    q: "Are cases manually verified?",
+    a: "Yes. Automated fetchers parse and normalize incoming reports, but every case enters a moderation queue and a human approves it before it appears on the public map.",
+  },
+  {
+    q: "How often is data updated?",
+    a: "Fast-cadence sources (ProMED, state DOHs) every 15 minutes. CDC, ECDC, and PAHO daily. WHO and aggregate sources daily.",
+  },
+  {
+    q: "Is this medical advice?",
+    a: "No. HantaVirusTrack is a surveillance tool. For medical guidance, contact your local health authority.",
+  },
+  {
+    q: "Can I integrate this into my own product?",
+    a: "Yes — Pro tier exposes a REST API and embed widgets. See the API docs.",
   },
 ];
 
 export const about = {
-  title: "About GeoHealthTracker",
+  eyebrow: "About",
+  title:   "Surveillance, not opinion.",
   intro:
-    "GeoHealthTracker is an independent project that visualizes publicly reported health signals on a single, navigable map. We don't break news — we consolidate signals already in the public record and make them easier to see in context.",
+    "HantaVirusTrack aggregates confirmed and suspected hantavirus cases from official health agencies and renders them on a live, source-linked map. Every case has a citation. Every case is human-reviewed before publish.",
   sections: [
     {
       heading: "Methodology",
-      body: "Our pipeline ingests bulletins from national and regional health agencies, peer-reviewed alerts, and a curated set of partner organizations. Each report is enriched with geocoded coordinates, normalized status, and a link back to the originating source. We re-check sources daily and mark resolved entries when the source declares closure.",
+      body:
+        "Per-source parsers normalize incoming reports into a canonical case shape, deduplicate on stable IDs or content hashes, and queue them for a moderator. Cases without confirmed coordinates are flagged for manual location entry. Source health is monitored continuously and surfaced to users.",
     },
     {
-      heading: "Sources",
-      body: "We pull from WHO, ECDC, US CDC, regional ministries of health, ProMED, peer-reviewed journals, and other vetted partners. Source credibility scoring is published openly. We do not aggregate social media reports as primary signals.",
-    },
-    {
-      heading: "What this is not",
-      body: "GeoHealthTracker is an informational research tool. It is not a medical device, a diagnostic service, or a substitute for guidance from public health authorities. Reports may be incomplete, delayed, or revised as situations evolve.",
-    },
-    {
-      heading: "Contact",
-      body: "Press, partnerships, and corrections: hello@geohealthtracker.example",
+      heading: "Built by",
+      body:
+        "Omar — independent operator. Reach out at omar@hantavirustrack.org.",
     },
   ],
+  disclaimerHeading: "Not medical advice",
+  disclaimerBody:
+    "This site is a surveillance tool. For medical guidance, contact your local health authority.",
+};
+
+export const sourcesPage = {
+  eyebrow: "Data sources",
+  title:   "Where every case comes from.",
+  intro:
+    "We only pull from official agencies and well-established public-health surveillance feeds. Source health is shown live; if a feed is degraded, we flag it.",
+  methodologyHeading: "How we review",
+  methodologyBody:
+    "Each ingested record is normalized, deduplicated, and queued for a human moderator. Bad data stays out of the public map. Source health is recomputed every cron tick.",
 };
 
 export const disclaimer = {
-  short: "Informational only — not medical advice.",
-  long: "GeoHealthTracker is an informational research tool aggregating public reports. It is not a medical device, diagnostic service, or substitute for guidance from qualified health professionals or public health authorities. Always consult primary sources and licensed clinicians for clinical decisions.",
+  short: "Not medical advice.",
+  long:
+    "HantaVirusTrack is a surveillance tool. For medical guidance, contact your local health authority. Reports may be incomplete, delayed, or revised as situations evolve.",
 };
 
 export const footer = {
@@ -158,36 +197,40 @@ export const footer = {
     {
       heading: "Product",
       links: [
-        { label: "Live Map", href: "/map" },
-        { label: "Pricing", href: "/pricing" },
-        { label: "API", href: "/about" },
+        { label: "Live map", href: "/map"     },
+        { label: "Cases",    href: "/cases"   },
+        { label: "Pricing",  href: "/pricing" },
+        { label: "API",      href: "/about"   },
+      ],
+    },
+    {
+      heading: "Data",
+      links: [
+        { label: "Sources",      href: "/sources" },
+        { label: "Methodology",  href: "/about"   },
+        { label: "Disclaimer",   href: "/about"   },
+        { label: "Status",       href: "/sources" },
       ],
     },
     {
       heading: "Company",
       links: [
-        { label: "About", href: "/about" },
-        { label: "Methodology", href: "/about" },
-        { label: "Press", href: "/about" },
-      ],
-    },
-    {
-      heading: "Legal",
-      links: [
-        { label: "Disclaimer", href: "/about" },
-        { label: "Privacy", href: "/about" },
-        { label: "Terms", href: "/about" },
+        { label: "About",   href: "/about"   },
+        { label: "Contact", href: "mailto:omar@hantavirustrack.org" },
+        { label: "Privacy", href: "/about"   },
+        { label: "Terms",   href: "/about"   },
       ],
     },
   ],
-  copyright: `© ${new Date().getFullYear()} GeoHealthTracker. All rights reserved.`,
+  caption:
+    "Data aggregated from CDC NNDSS, ProMED-mail, WHO DON, ECDC, PAHO, and state health departments. Not medical advice.",
 };
 
 export const map = {
-  title: "Live global health map",
-  legend: "Report status",
-  selectPrompt: "Select a marker to see report details.",
+  title: "Live hantavirus map",
+  legend: "Legend",
+  selectPrompt: "Select a marker to see case details.",
   noToken:
     "Map preview unavailable — set NEXT_PUBLIC_MAPBOX_TOKEN in .env.local to enable the interactive map.",
-  loading: "Loading map…",
+  loading: "Loading cases…",
 };

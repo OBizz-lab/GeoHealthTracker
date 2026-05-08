@@ -1,51 +1,93 @@
 import type { ReportStatus, ReportSeverity } from "./types";
 
-export const colors = {
-  bg: "#0a0f1e",
-  surface: "#111827",
-  surfaceElevated: "#1f2937",
-  border: "#27314a",
-  borderMuted: "#1c2436",
+// =============================================================================
+// HantaVirusTrack canonical design tokens — mirror of globals.css :root vars
+// (DESIGN_DOC §2)
+// =============================================================================
 
+export const colors = {
+  // Surface
+  bg:          "#0A0E1A",
+  surface:     "#111726",
+  elevated:    "#1A2236",
+  overlay:     "#1F2A44",
+
+  // Borders
+  border:       "#2A3550",
+  borderSubtle: "#1F2A44",
+  borderStrong: "#3D4A6B",
+
+  // Text
   text: {
-    primary: "#f4f4f5",
-    secondary: "#a1a1aa",
-    muted: "#71717a",
-    subtle: "#52525b",
+    primary:   "#E8EDF7",
+    secondary: "#A3AECF",
+    tertiary:  "#6E7A9C",
+    inverse:   "#0A0E1A",
+    // Legacy aliases used by older callsites
+    muted:     "#A3AECF",
+    subtle:    "#6E7A9C",
   },
 
+  // Brand / accent
+  accent: {
+    primary:      "#5BC0EB",
+    primaryHover: "#7AD4FA",
+    muted:        "#1E3A4A",
+  },
+
+  // Status (markers + pills)
   status: {
-    fatal:     "#ef4444",
-    confirmed: "#f97316",
-    suspected: "#f59e0b",
-    reported:  "#3b82f6",
-    resolved:  "#22c55e",
+    confirmed: "#FF6B6B",
+    suspected: "#FFB84D",
+    fatal:     "#C92A4F",
+    reported:  "#5BC0EB",
+    resolved:  "#51CF66",
   } as Record<ReportStatus, string>,
 
+  // Severity
   severity: {
-    low: "#22c55e",
-    moderate: "#3b82f6",
-    high: "#f59e0b",
-    critical: "#ef4444",
+    low:      "#51CF66",
+    moderate: "#5BC0EB",
+    high:     "#FFB84D",
+    critical: "#C92A4F",
   } as Record<ReportSeverity, string>,
 
-  accent: {
-    primary: "#3b82f6",
-    primaryHover: "#2563eb",
+  // Map clusters (count-thresholded)
+  cluster: {
+    low:  "#FFB84D", // < 10
+    med:  "#FF6B6B", // 10–49
+    high: "#C92A4F", // 50+
+  },
+
+  // Map overlay panels
+  map: {
+    overlayBg: "rgba(17, 23, 38, 0.92)",
   },
 } as const;
 
 export const statusLabels: Record<ReportStatus, string> = {
   confirmed: "Confirmed",
   suspected: "Suspected",
-  fatal: "Fatal",
-  reported: "Reported",
-  resolved: "Resolved",
+  fatal:     "Fatal",
+  reported:  "Reported",
+  resolved:  "Resolved",
 };
 
 export const severityLabels: Record<ReportSeverity, string> = {
-  low: "Low",
+  low:      "Low",
   moderate: "Moderate",
-  high: "High",
+  high:     "High",
   critical: "Critical",
 };
+
+// Pill class helper — maps status → CSS pill class
+export function pillClass(status: ReportStatus): string {
+  switch (status) {
+    case "confirmed": return "pill-confirmed";
+    case "suspected": return "pill-suspected";
+    case "fatal":     return "pill-fatal";
+    case "resolved":  return "pill-recovered";
+    case "reported":
+    default:          return "pill-info";
+  }
+}

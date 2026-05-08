@@ -1,63 +1,72 @@
-import {
-  BellRing,
-  Clock,
-  Code2,
-  Globe2,
-  Lock,
-  ShieldCheck,
-  type LucideIcon,
-} from "lucide-react";
+"use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { Globe2, FlaskConical, BellRing } from "lucide-react";
 import { features } from "@/lib/copy";
 
-const iconMap: Record<string, LucideIcon> = {
+const ICONS = {
   Globe2,
-  ShieldCheck,
+  FlaskConical,
   BellRing,
-  Clock,
-  Code2,
-  Lock,
-};
+} as const;
+
+// =============================================================================
+// FeatureGrid — DESIGN_DOC §3 / marketing-screens.jsx
+// "What it is" — 3 cards with icon + title + description
+// =============================================================================
 
 export function FeatureGrid() {
   return (
-    <section className="border-b border-border">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <div className="max-w-2xl">
-          <h2 className="text-balance text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
-            Built for analysts who need answers fast
-          </h2>
-          <p className="mt-4 text-zinc-400">
-            Everything you need to monitor, investigate, and share what's
-            happening — without the noise of social-media rumor cycles.
-          </p>
-        </div>
-        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {features.map((feature) => {
-            const Icon = iconMap[feature.icon] ?? Globe2;
-            return (
-              <Card
-                key={feature.title}
-                className="border-border bg-card/60 transition-colors hover:bg-card"
+    <section style={{ padding: "64px 64px" }}>
+      <div className="t-cap t-up" style={{ marginBottom: 8, color: "var(--text-secondary)" }}>
+        What it is
+      </div>
+      <h2
+        className="t-h1"
+        style={{ marginBottom: 40, maxWidth: 600, color: "var(--text-primary)" }}
+      >
+        One verified view of where hantavirus is reported.
+      </h2>
+
+      <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+        {features.map((f) => {
+          const Icon = ICONS[f.icon as keyof typeof ICONS] ?? Globe2;
+          return (
+            <div
+              key={f.title}
+              style={{
+                background:    "var(--bg-surface)",
+                border:        "1px solid var(--border-default)",
+                borderRadius:  8,
+                padding:       28,
+              }}
+            >
+              <div
+                className="flex items-center justify-center"
+                style={{
+                  width: 40, height: 40,
+                  borderRadius: 8,
+                  background:   "var(--accent-muted)",
+                  marginBottom: 16,
+                }}
               >
-                <CardContent className="flex flex-col gap-4 p-6">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-md bg-blue-500/10 text-blue-400">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <h3 className="text-lg font-medium text-zinc-100">
-                      {feature.title}
-                    </h3>
-                    <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-                      {feature.description}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                <Icon
+                  className="h-5 w-5"
+                  style={{ color: "var(--accent)" }}
+                  strokeWidth={1.5}
+                />
+              </div>
+              <div
+                className="t-h3"
+                style={{ marginBottom: 8, color: "var(--text-primary)" }}
+              >
+                {f.title}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
+                {f.description}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

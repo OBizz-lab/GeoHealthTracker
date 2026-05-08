@@ -1,9 +1,10 @@
 import { MapShell } from "@/components/map/map-shell";
+import { brand } from "@/lib/copy";
 
 export const metadata = {
-  title: "Live Map — GeoHealthTracker",
+  title: `Live Map — ${brand.name}`,
   description:
-    "Interactive global map of verified hantavirus cases sourced from WHO, ProMED, and government health agencies.",
+    "Interactive global map of verified hantavirus cases sourced from WHO, ProMED, CDC, ECDC, PAHO, and state health departments.",
 };
 
 export default function MapPage() {
