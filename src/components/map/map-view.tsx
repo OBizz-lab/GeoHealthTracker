@@ -113,37 +113,13 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
     }
   }, [reports, mapReady, reportById]);
 
-  const [debugInfo, setDebugInfo] = useState("init");
-
-  useEffect(() => {
-    if (!mapboxToken) {
-      setDebugInfo("no token");
-      return;
-    }
-    if (!containerRef.current) {
-      setDebugInfo("no container");
-      return;
-    }
-    const rect = containerRef.current.getBoundingClientRect();
-    setDebugInfo(`container: ${rect.width}x${rect.height}, mapReady: ${mapReady}, token: ${mapboxToken.slice(0, 10)}...`);
-  });
-
   if (!mapboxToken) {
     return <MapFallback reports={reports} onSelect={setSelected} selected={selected} />;
   }
 
   return (
-    <div className="relative h-full w-full" style={{ border: "3px solid red" }}>
-      <div
-        ref={containerRef}
-        className="absolute inset-0"
-        style={{ border: "3px solid lime" }}
-      />
-      <div
-        className="absolute left-4 top-16 z-50 rounded bg-black/80 px-3 py-2 font-mono text-xs text-yellow-400"
-      >
-        DEBUG: {debugInfo}
-      </div>
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" />
       <div className="pointer-events-none absolute left-4 top-4 z-20 sm:left-6 sm:top-6">
         <LegendPanel />
       </div>
