@@ -30,6 +30,14 @@ const FILL_COLOR: Record<ReportStatus, string> = {
   resolved:  "#51CF66",
 };
 
+const STATUS_LABEL: Record<ReportStatus, string> = {
+  fatal:     "Fatal",
+  confirmed: "Confirmed",
+  suspected: "Suspected",
+  reported:  "Reported",
+  resolved:  "Resolved",
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -49,28 +57,79 @@ function toGeoJSON(reports: Report[]) {
   };
 }
 
-function buildCountryExpressions(reports: Report[]) {
-  const rank: Record<string, number> = {
-    resolved: 0, reported: 1, suspected: 2, confirmed: 3, fatal: 4,
-  };
-  const countryStatus = new Map<string, ReportStatus>();
+// =============================================================================
+// Per-country aggregation
+// Sums case_count per ISO-2 country code; returns highest-rank status (worst
+// outcome present) and total reports.
+// =============================================================================
+const STATUS_RANK: Record<string, number> = {
+  resolved: 0, reported: 1, suspected: 2, confirmed: 3, fatal: 4,
+};
+
+export interface CountryStats {
+  iso:          string;
+  totalCases:   number;
+  reportCount:  number;
+  topStatus:    ReportStatus;
+}
+
+export function aggregateByCountry(reports: Report[]): Map<string, CountryStats> {
+  const out = new Map<string, CountryStats>();
   for (const r of reports) {
     if (!r.country || r.country === "ZZ") continue;
-    const prev = countryStatus.get(r.country);
-    if (!prev || rank[r.status] > rank[prev]) countryStatus.set(r.country, r.status);
+    const prev = out.get(r.country);
+    if (!prev) {
+      out.set(r.country, {
+        iso:         r.country,
+        totalCases:  r.case_count,
+        reportCount: 1,
+        topStatus:   r.status,
+      });
+    } else {
+      prev.totalCases  += r.case_count;
+      prev.reportCount += 1;
+      if (STATUS_RANK[r.status] > STATUS_RANK[prev.topStatus]) prev.topStatus = r.status;
+    }
   }
-  if (countryStatus.size === 0) return null;
+  return out;
+}
 
-  const fillColor: unknown[]   = ["match", ["get", "iso_3166_1"]];
+// ── Cluster-scale color from total case count (matches legend / clusters) ──
+const CLUSTER_LOW  = "#FFB84D"; //  < 10
+const CLUSTER_MED  = "#FF6B6B"; // 10–49
+const CLUSTER_HIGH = "#C92A4F"; // 50+
+
+function colorForCount(n: number): string {
+  if (n >= 50) return CLUSTER_HIGH;
+  if (n >= 10) return CLUSTER_MED;
+  return CLUSTER_LOW;
+}
+
+// Opacity steps — each band is just barely visible at the floor and reaches the
+// design-doc target by the ceiling. Keeps the sparsest country readable while
+// the worst countries clearly dominate.
+function opacityForCount(n: number): number {
+  if (n >= 50) return 0.36;
+  if (n >= 10) return 0.28;
+  if (n >=  3) return 0.22;
+  return 0.16;
+}
+
+function buildCountryExpressions(stats: Map<string, CountryStats>) {
+  if (stats.size === 0) return null;
+
+  const fillColor:   unknown[] = ["match", ["get", "iso_3166_1"]];
   const fillOpacity: unknown[] = ["match", ["get", "iso_3166_1"]];
-  const lineColor: unknown[]   = ["match", ["get", "iso_3166_1"]];
+  const lineColor:   unknown[] = ["match", ["get", "iso_3166_1"]];
   const lineOpacity: unknown[] = ["match", ["get", "iso_3166_1"]];
 
-  countryStatus.forEach((status, iso) => {
-    fillColor.push(iso, FILL_COLOR[status]);
-    fillOpacity.push(iso, 0.18);
-    lineColor.push(iso, FILL_COLOR[status]);
-    lineOpacity.push(iso, 0.7);
+  stats.forEach((s, iso) => {
+    const fill = colorForCount(s.totalCases);
+    const ring = FILL_COLOR[s.topStatus]; // outline encodes worst-status
+    fillColor.push(iso, fill);
+    fillOpacity.push(iso, opacityForCount(s.totalCases));
+    lineColor.push(iso, ring);
+    lineOpacity.push(iso, 0.85);
   });
   fillColor.push("#000000");   fillOpacity.push(0);
   lineColor.push("#000000");   lineOpacity.push(0);
@@ -90,6 +149,8 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
   const containerRef    = useRef<HTMLDivElement | null>(null);
   const mapRef          = useRef<mapboxgl.Map | null>(null);
   const reportByIdRef   = useRef<Map<string, Report>>(new Map());
+  const countryStatsRef = useRef<Map<string, CountryStats>>(new Map());
+  const hoverPopupRef   = useRef<mapboxgl.Popup | null>(null);
   const [selected, setSelected] = useState<Report | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
@@ -99,8 +160,12 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
     reportByIdRef.current = m;
   }, [reports]);
 
-  const geoJSON            = useMemo(() => toGeoJSON(reports), [reports]);
-  const countryExpressions = useMemo(() => buildCountryExpressions(reports), [reports]);
+  const geoJSON       = useMemo(() => toGeoJSON(reports), [reports]);
+  const countryStats  = useMemo(() => aggregateByCountry(reports), [reports]);
+  const countryExpressions = useMemo(() => buildCountryExpressions(countryStats), [countryStats]);
+
+  // Keep stats fresh for the hover handler closure
+  useEffect(() => { countryStatsRef.current = countryStats; }, [countryStats]);
 
   // ── Init map ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -246,11 +311,68 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
         });
       });
 
+      // ── Country hover popup — shows aggregated case totals per country ──
+      const popup = new mapboxgl.Popup({
+        closeButton:  false,
+        closeOnClick: false,
+        offset:       12,
+      });
+      hoverPopupRef.current = popup;
+
+      map.on("mousemove", "country-fill", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const iso  = (f.properties?.iso_3166_1 as string) ?? "";
+        const name = (f.properties?.name_en as string)
+                  ?? (f.properties?.name as string)
+                  ?? iso;
+        const stats = countryStatsRef.current.get(iso);
+        if (!stats) {
+          popup.remove();
+          return;
+        }
+        map.getCanvas().style.cursor = "pointer";
+        popup
+          .setLngLat(e.lngLat)
+          .setHTML(`
+            <div style="min-width:160px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="
+                  width:6px;height:6px;border-radius:50%;
+                  background:${STATUS_COLOR[stats.topStatus] ?? "#5BC0EB"}
+                "></span>
+                <span style="font-size:12px;font-weight:600;color:#E8EDF7">${name}</span>
+                <span style="
+                  margin-left:auto;font-size:10px;color:#A3AECF;
+                  font-family:'JetBrains Mono',ui-monospace,monospace
+                ">${iso}</span>
+              </div>
+              <div style="font-size:18px;font-weight:600;color:#E8EDF7;font-variant-numeric:tabular-nums">
+                ${stats.totalCases.toLocaleString()}
+                <span style="font-size:11px;font-weight:400;color:#A3AECF;margin-left:4px">
+                  case${stats.totalCases === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div style="font-size:11px;color:#6E7A9C;margin-top:2px">
+                ${stats.reportCount} report${stats.reportCount === 1 ? "" : "s"}
+                · worst: ${STATUS_LABEL[stats.topStatus] ?? stats.topStatus}
+              </div>
+            </div>
+          `)
+          .addTo(map);
+      });
+      map.on("mouseleave", "country-fill", () => {
+        map.getCanvas().style.cursor = "";
+        popup.remove();
+      });
+
       setMapReady(true);
     });
 
     mapRef.current = map;
     return () => {
+      hoverPopupRef.current?.remove();
+      hoverPopupRef.current = null;
       map.remove();
       mapRef.current = null;
       setMapReady(false);
