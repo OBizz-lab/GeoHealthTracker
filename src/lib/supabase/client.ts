@@ -26,3 +26,16 @@ export function getSupabaseClient(): SupabaseClient<any, any, any> | null {
   _client = createClient<any, any, any>(url, key);
   return _client;
 }
+
+/**
+ * Strict variant: returns a non-null client or throws. Use in admin code
+ * where Supabase is mandatory — gives callers a non-nullable type, so
+ * `supabase.from(...)` inside async closures doesn't lose narrowing and
+ * trip strict TS checks on Vercel.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getSupabaseClientStrict(): SupabaseClient<any, any, any> {
+  const c = getSupabaseClient();
+  if (!c) throw new Error("Supabase client is not configured (missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY).");
+  return c;
+}

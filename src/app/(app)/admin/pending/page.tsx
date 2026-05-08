@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Clock, CheckCircle2, XCircle, Mail } from "lucide-react";
 
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClientStrict } from "@/lib/supabase/client";
 
 // =============================================================================
 // /admin/pending — what a newly-signed-up user sees while waiting for approval.
@@ -24,14 +24,12 @@ export default function AdminPendingPage() {
   const [recoveryError, setRecoveryError] = useState("");
 
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-
+    const supabase = getSupabaseClientStrict();
     let cancelled = false;
     let interval: ReturnType<typeof setInterval> | null = null;
 
     async function refresh() {
-      const { data: sess } = await supabase!.auth.getSession();
+      const { data: sess } = await supabase.auth.getSession();
       // No session → check if we're in the "just-confirmed-email" flow.
       if (!sess.session) {
         if (typeof window !== "undefined") {
@@ -46,7 +44,7 @@ export default function AdminPendingPage() {
       }
 
       // Approved admin → /cases
-      const { data: grant } = await supabase!
+      const { data: grant } = await supabase
         .from("admin_grants")
         .select("user_id")
         .eq("user_id", sess.session.user.id)
@@ -57,7 +55,7 @@ export default function AdminPendingPage() {
         return;
       }
 
-      const { data: signup } = await supabase!
+      const { data: signup } = await supabase
         .from("admin_signups")
         .select("status, reviewer_note")
         .eq("user_id", sess.session.user.id)
@@ -80,7 +78,7 @@ export default function AdminPendingPage() {
       } catch { /* */ }
 
       if (stored?.contribution) {
-        const { error: insErr } = await supabase!.from("admin_signups").insert({
+        const { error: insErr } = await supabase.from("admin_signups").insert({
           user_id: sess.session.user.id,
           username: sess.session.user.email ?? "",
           contribution_statement: stored.contribution,
@@ -113,8 +111,7 @@ export default function AdminPendingPage() {
       return;
     }
     setRecovering(true);
-    const supabase = getSupabaseClient();
-    if (!supabase) { setRecoveryError("Supabase is not configured."); setRecovering(false); return; }
+    const supabase = getSupabaseClientStrict();
     const { data: sess } = await supabase.auth.getSession();
     if (!sess.session) { router.replace("/admin/sign-in"); return; }
     const { error: insErr } = await supabase.from("admin_signups").insert({

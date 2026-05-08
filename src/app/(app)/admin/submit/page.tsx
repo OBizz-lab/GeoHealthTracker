@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClientStrict } from "@/lib/supabase/client";
 
 interface FormState {
   source_url:      string;
@@ -46,8 +46,7 @@ export default function AdminSubmitPage() {
   // Auth + admin-grant gate — bounce to sign-in if not authed; bounce to
   // /admin/pending if authed but not yet an approved admin.
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) { setError("Supabase is not configured."); return; }
+    const supabase = getSupabaseClientStrict();
     let cancelled = false;
     (async () => {
       const { data: sess } = await supabase.auth.getSession();
@@ -102,8 +101,7 @@ export default function AdminSubmitPage() {
 
     setSubmitting(true);
     try {
-      const supabase = getSupabaseClient();
-      if (!supabase) { setError("Supabase is not configured."); setSubmitting(false); return; }
+      const supabase = getSupabaseClientStrict();
 
       const { data: sess, error: sessErr } = await supabase.auth.getSession();
       if (sessErr) { setError(`Session error: ${sessErr.message}`); setSubmitting(false); return; }

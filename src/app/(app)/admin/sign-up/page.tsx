@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClientStrict } from "@/lib/supabase/client";
 
 // =============================================================================
 // /admin/sign-up — three-field signup per the user's spec.
@@ -28,8 +28,7 @@ export default function AdminSignUpPage() {
   // /cases). This is what the user wanted: revisiting /admin/sign-up while
   // already pending should land them on the status page, not a fresh form.
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) { setHydrated(true); return; }
+    const supabase = getSupabaseClientStrict();
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace("/admin/pending");
       else setHydrated(true);
@@ -56,8 +55,7 @@ export default function AdminSignUpPage() {
     }
 
     setLoading(true);
-    const supabase = getSupabaseClient();
-    if (!supabase) { setError("Supabase is not configured."); setLoading(false); return; }
+    const supabase = getSupabaseClientStrict();
 
     // Create the auth.users row.
     const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClientStrict } from "@/lib/supabase/client";
 
 export default function AdminSignInPage() {
   const router = useRouter();
@@ -16,8 +16,7 @@ export default function AdminSignInPage() {
 
   // If already signed in, bounce straight to /cases.
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) { setChecking(false); return; }
+    const supabase = getSupabaseClientStrict();
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) router.replace("/cases");
       else setChecking(false);
@@ -28,12 +27,7 @@ export default function AdminSignInPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setError("Supabase is not configured.");
-      setLoading(false);
-      return;
-    }
+    const supabase = getSupabaseClientStrict();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setError(error.message);

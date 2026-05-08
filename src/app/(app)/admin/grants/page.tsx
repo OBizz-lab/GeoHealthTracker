@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, X, ShieldCheck } from "lucide-react";
 
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClientStrict } from "@/lib/supabase/client";
 
 interface PendingSignup {
   id:                     string;
@@ -27,9 +27,7 @@ export default function AdminGrantsPage() {
 
   // Auth + admin gate.
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-
+    const supabase = getSupabaseClientStrict();
     let cancelled = false;
     (async () => {
       const { data: sess } = await supabase.auth.getSession();
@@ -55,8 +53,8 @@ export default function AdminGrantsPage() {
   }, [router]);
 
   const load = useCallback(async () => {
-    const supabase = getSupabaseClient();
-    if (!supabase || !isAdmin) return;
+    if (!isAdmin) return;
+    const supabase = getSupabaseClientStrict();
     let q = supabase
       .from("admin_signups")
       .select("id, user_id, username, contribution_statement, status, reviewer_note, created_at")
@@ -70,8 +68,7 @@ export default function AdminGrantsPage() {
 
   async function approve(s: PendingSignup) {
     setActionError("");
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
+    const supabase = getSupabaseClientStrict();
 
     const { data: sess } = await supabase.auth.getSession();
     const reviewerId = sess.session?.user.id;
@@ -108,8 +105,7 @@ export default function AdminGrantsPage() {
       "",
     );
     if (note === null) return; // cancelled
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
+    const supabase = getSupabaseClientStrict();
 
     const { data: sess } = await supabase.auth.getSession();
     const reviewerId = sess.session?.user.id;

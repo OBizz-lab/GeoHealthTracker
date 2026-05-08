@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClientStrict } from "@/lib/supabase/client";
 
 // =============================================================================
 // Admin Moderation Queue
@@ -49,8 +49,7 @@ function SignInForm({ onSignIn }: { onSignIn: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const supabase = getSupabaseClient();
-    if (!supabase) { setError("Supabase is not configured."); setLoading(false); return; }
+    const supabase = getSupabaseClientStrict();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setError(error.message);
     else onSignIn();
@@ -221,15 +220,14 @@ export function AdminQueue() {
   const [filter, setFilter] = useState<"pending" | "published" | "all">("pending");
   const [actionError, setActionError] = useState("");
 
-  const supabase = getSupabaseClient();
+  const supabase = getSupabaseClientStrict();
   const currentUserId = session?.user.id ?? null;
 
   // Check auth + admin status on mount
   useEffect(() => {
-    if (!supabase) { setLoading(false); return; }
     let cancelled = false;
     async function refresh() {
-      const { data } = await supabase!.auth.getSession();
+      const { data } = await supabase.auth.getSession();
       const sess = (data.session as unknown as { user: { id: string } } | null) ?? null;
       if (cancelled) return;
       setSession(sess);
@@ -248,7 +246,7 @@ export function AdminQueue() {
       const approved = !!grant;
       setIsApprovedAdmin(approved);
       if (approved) {
-        const { count } = await supabase!
+        const { count } = await supabase
           .from("admin_signups")
           .select("id", { count: "exact", head: true })
           .eq("status", "pending");
@@ -269,7 +267,6 @@ export function AdminQueue() {
   }, [session, isApprovedAdmin, filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCases() {
-    if (!supabase) return;
     setLoading(true);
     let q = supabase
       .from("cases")
@@ -286,7 +283,6 @@ export function AdminQueue() {
   }
 
   async function handleApprove(id: string) {
-    if (!supabase) return;
     setActionError("");
     const target = cases.find((c) => c.id === id);
     if (target?.submitted_by && target.submitted_by === currentUserId) {
@@ -305,7 +301,6 @@ export function AdminQueue() {
   }
 
   async function handleReject(id: string) {
-    if (!supabase) return;
     const c = cases.find((x) => x.id === id);
     if (c?.is_published) {
       // Unpublish instead of delete
@@ -318,7 +313,6 @@ export function AdminQueue() {
   }
 
   async function handleSignOut() {
-    if (!supabase) return;
     await supabase.auth.signOut();
     setSession(null);
     setCases([]);
@@ -326,7 +320,7 @@ export function AdminQueue() {
 
   // Not signed in
   if (!session && !loading) {
-    return <SignInForm onSignIn={() => supabase?.auth.getSession().then(({ data }) => setSession(data.session))} />;
+    return <SignInForm onSignIn={() => supabase.auth.getSession().then(({ data }) => setSession(data.session))} />;
   }
 
   // Signed in but not yet an approved admin → friendly nudge
