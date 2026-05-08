@@ -4,6 +4,7 @@ import "./globals.css";
 
 import { brand } from "@/lib/copy";
 import { SiteHeader } from "@/components/layout/site-header";
+import { DisclaimerModal } from "@/components/disclaimer-modal";
 
 const sans = Inter({
   variable: "--font-sans",
@@ -39,6 +40,7 @@ export default function RootLayout({
       >
         <SiteHeader />
         <div className="flex-1 flex flex-col min-h-0">{children}</div>
+        <DisclaimerModal />
       </body>
     </html>
   );

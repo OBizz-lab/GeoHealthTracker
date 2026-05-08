@@ -87,6 +87,12 @@ export function SiteFooter({ compact = false }: { compact?: boolean }) {
         <span>{footer.caption}</span>
         <span>© Mapbox · © OpenStreetMap</span>
       </div>
+      <div
+        className="pt-2"
+        style={{ fontSize: 11, color: "var(--text-tertiary)" }}
+      >
+        {footer.legalStrip}
+      </div>
     </footer>
   );
 }

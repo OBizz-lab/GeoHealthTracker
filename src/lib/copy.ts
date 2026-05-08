@@ -1,5 +1,6 @@
 // =============================================================================
-// HantaVirusTrack copy — canonical source of strings (DESIGN_DOC)
+// HantaVirusTrack copy — canonical source of strings
+// Free-only edition per FREE_MIGRATION.md (authoritative).
 // =============================================================================
 
 export const brand = {
@@ -13,14 +14,17 @@ export const brand = {
 
 export const nav = {
   links: [
-    { label: "Map",      href: "/map"      },
-    { label: "Cases",    href: "/cases"    },
-    { label: "Sources",  href: "/sources"  },
-    { label: "About",    href: "/about"    },
-    { label: "Pricing",  href: "/pricing"  },
+    { label: "Map",     href: "/map"     },
+    { label: "Cases",   href: "/cases"   },
+    { label: "Sources", href: "/sources" },
+    { label: "About",   href: "/about"   },
+    { label: "Support", href: "/support" },
   ],
-  cta:    { label: "Subscribe →", href: "/pricing" },
-  signIn: { label: "Sign in",     href: "/admin/queue" },
+  // "Sign up free" per FREE_MIGRATION.md §2 / §12 acceptance criteria.
+  // Auth doesn't exist yet — points to the newsletter form on the home page
+  // until Phase 2 wires up signup.
+  cta:    { label: "Sign up free", href: "/#newsletter" },
+  signIn: { label: "Sign in",      href: "/admin/queue" },
 };
 
 export const hero = {
@@ -53,10 +57,10 @@ export const features = [
     icon: "FlaskConical",
   },
   {
-    title: "Custom alerts",
+    title: "Free for everyone",
     description:
-      "Watch zones around regions you care about. Email, SMS, and browser push.",
-    icon: "BellRing",
+      "No paid tiers, no ads, no data sales. Donations on Buy Me a Coffee keep the lights on.",
+    icon: "Coffee",
   },
 ];
 
@@ -73,68 +77,25 @@ export const sourcesStrip = [
 ];
 
 export const newsletter = {
-  title:       "Get the weekly digest.",
-  description: "Notable cases and source updates, every Monday. Free.",
-  placeholder: "you@example.com",
-  cta:         "Subscribe",
-  success:     "Check your inbox to confirm.",
+  title:        "Get the weekly digest.",
+  description:  "Notable cases and source updates, every Monday. Free.",
+  placeholder:  "you@example.com",
+  cta:          "Subscribe",
+  success:      "Check your inbox to confirm.",
+  // CASL — Canada's Anti-Spam Legislation requires unticked express consent.
+  // FREE_MIGRATION.md §9.
+  consentLabel:
+    "I consent to receive the weekly HantaVirusTrack newsletter by email. I can unsubscribe at any time using the link in every message.",
+  caslFooter:
+    "Sent by Omar Bafagih, doing business as HantaVirusTrack — [mailing address]. Unsubscribe link in every message. Free of charge to receive.",
 };
 
-export const pricingTiers = [
-  {
-    id:    "free",
-    name:  "Free",
-    price: { monthly: "$0",     annual: "$0"      },
-    save:  null,
-    description: "Live map, all published cases, weekly digest.",
-    features: [
-      "Full map access",
-      "All published cases",
-      "Weekly email digest",
-      "Read-only",
-    ],
-    cta:  "Choose Free",
-    href: "/map",
-  },
-  {
-    id:    "watch",
-    name:  "Watch",
-    price: { monthly: "$7/mo",  annual: "$60/yr"  },
-    save:  { monthly: null,     annual: "save $24" },
-    description: "Geo-targeted alerts via email, SMS, and push.",
-    features: [
-      "Up to 5 watch zones",
-      "Real-time alerts (email/SMS/push)",
-      "Configurable thresholds",
-      "Faster cadence (15 min)",
-      "Full historical data + CSV",
-    ],
-    cta:  "Choose Watch",
-    href: "/map",
-    highlighted: true,
-  },
-  {
-    id:    "pro",
-    name:  "Pro",
-    price: { monthly: "$99/mo", annual: "$990/yr" },
-    save:  { monthly: null,     annual: "save $198" },
-    description: "API, embeds, and raw exports for institutions.",
-    features: [
-      "Everything in Watch",
-      "API access (rate-limited)",
-      "Embed widgets",
-      "Raw data exports",
-      "Priority support",
-    ],
-    cta:  "Choose Pro",
-    href: "mailto:omar@hantavirustrack.org",
-  },
-];
-
+// FAQ on the marketing landing page (short-form). Long-form FAQ lives on
+// /about under aboutFaq in lib/legal-content.ts.
 export const faqItems = [
   {
     q: "Where does the data come from?",
-    a: "Every case originates from an official health agency or surveillance feed: CDC NNDSS, WHO DON, ECDC, PAHO, ProMED-mail, and US state health departments. Each case has a direct link back to its source.",
+    a: "Every case originates from an official health agency or surveillance feed: CDC NNDSS, WHO DON, ECDC, PAHO, ProMED-mail, and US state health departments — plus community submissions backed by verifiable source URLs. Each case has a direct link back to its source.",
   },
   {
     q: "Are cases manually verified?",
@@ -146,36 +107,15 @@ export const faqItems = [
   },
   {
     q: "Is this medical advice?",
-    a: "No. HantaVirusTrack is a surveillance tool. For medical guidance, contact your local health authority.",
+    a: "No. HantaVirusTrack is a surveillance tool. For medical guidance, contact your local health authority. See the full Disclaimer for details.",
   },
   {
-    q: "Can I integrate this into my own product?",
-    a: "Yes — Pro tier exposes a REST API and embed widgets. See the API docs.",
+    q: "Is HantaVirusTrack free?",
+    a: "Yes — completely free for everyone. No paid tiers, no ads, no data sales. If you find it useful, you can leave a tip on the Support page.",
   },
 ];
 
-export const about = {
-  eyebrow: "About",
-  title:   "Surveillance, not opinion.",
-  intro:
-    "HantaVirusTrack aggregates confirmed and suspected hantavirus cases from official health agencies and renders them on a live, source-linked map. Every case has a citation. Every case is human-reviewed before publish.",
-  sections: [
-    {
-      heading: "Methodology",
-      body:
-        "Per-source parsers normalize incoming reports into a canonical case shape, deduplicate on stable IDs or content hashes, and queue them for a moderator. Cases without confirmed coordinates are flagged for manual location entry. Source health is monitored continuously and surfaced to users.",
-    },
-    {
-      heading: "Built by",
-      body:
-        "Omar — independent operator. Reach out at omar@hantavirustrack.org.",
-    },
-  ],
-  disclaimerHeading: "Not medical advice",
-  disclaimerBody:
-    "This site is a surveillance tool. For medical guidance, contact your local health authority.",
-};
-
+// Legacy short export retained for the /sources page that still consumes it.
 export const sourcesPage = {
   eyebrow: "Data sources",
   title:   "Where every case comes from.",
@@ -186,10 +126,35 @@ export const sourcesPage = {
     "Each ingested record is normalized, deduplicated, and queued for a human moderator. Bad data stays out of the public map. Source health is recomputed every cron tick.",
 };
 
+// Tiny copy bundle used by the case-drawer and other surfaces.
 export const disclaimer = {
   short: "Not medical advice.",
   long:
     "HantaVirusTrack is a surveillance tool. For medical guidance, contact your local health authority. Reports may be incomplete, delayed, or revised as situations evolve.",
+};
+
+// /support page copy — FREE_MIGRATION.md §5.
+export const supportPage = {
+  eyebrow: "Support",
+  title:   "HantaVirusTrack is free for everyone.",
+  intro:
+    "If it's been useful to you and you'd like to support the project, you can leave a tip via Buy Me a Coffee. There's no recurring commitment, donations are completely optional, and the site never paywalls features, runs ads, or sells data.",
+  bmcHeading: "Buy me a coffee",
+  bmcMissing:
+    "The Buy Me a Coffee handle hasn't been configured yet. Once it is, the embed will appear here.",
+  bmcFallback: "Visit Buy Me a Coffee to support directly →",
+  fundsHeading: "What your tip funds",
+  fundsBody:
+    "Infrastructure (Mapbox tiles, Vercel hosting, Supabase, Resend email, domain renewal, occasional SMS costs) and time spent moderating submissions and tuning data sources. We'll publish an annual cost-vs-donations report after the first year.",
+  taxHeading: "Important",
+  taxBody:
+    "Donations are not tax-deductible. HantaVirusTrack is operated by an individual, not a registered charity, and donations cannot be claimed as charitable contributions on your tax return. Buy Me a Coffee handles all payment processing on its side; we don't see your card details.",
+  helpHeading: "Other ways to help",
+  help: [
+    { label: "Submit a case",            href: "/submit",     description: "Spotted a hantavirus case in the news that we haven't picked up? Sign up free and submit it." },
+    { label: "Apply as a researcher",    href: "/researcher", description: "Cover hantavirus professionally? Apply for elevated API access — free." },
+    { label: "Tell people who'd find it useful", href: "/about", description: "Public-health workers, regional newsrooms, researchers in endemic regions." },
+  ],
 };
 
 export const footer = {
@@ -199,31 +164,33 @@ export const footer = {
       links: [
         { label: "Live map", href: "/map"     },
         { label: "Cases",    href: "/cases"   },
-        { label: "Pricing",  href: "/pricing" },
-        { label: "API",      href: "/about"   },
-      ],
-    },
-    {
-      heading: "Data",
-      links: [
-        { label: "Sources",      href: "/sources" },
-        { label: "Methodology",  href: "/about"   },
-        { label: "Disclaimer",   href: "/about"   },
-        { label: "Status",       href: "/sources" },
+        { label: "Sources",  href: "/sources" },
+        { label: "Support",  href: "/support" },
       ],
     },
     {
       heading: "Company",
       links: [
-        { label: "About",   href: "/about"   },
-        { label: "Contact", href: "mailto:omar@hantavirustrack.org" },
-        { label: "Privacy", href: "/about"   },
-        { label: "Terms",   href: "/about"   },
+        { label: "About",       href: "/about"             },
+        { label: "Methodology", href: "/about#methodology" },
+        { label: "FAQ",         href: "/about#faq"         },
+        { label: "Contact",     href: "/about#contact"     },
+      ],
+    },
+    {
+      heading: "Legal",
+      links: [
+        { label: "Disclaimer", href: "/about#disclaimer" },
+        { label: "Terms",      href: "/about#terms"      },
+        { label: "Privacy",    href: "/about#privacy"    },
       ],
     },
   ],
   caption:
     "Data aggregated from CDC NNDSS, ProMED-mail, WHO DON, ECDC, PAHO, and state health departments. Not medical advice.",
+  // CASL + tax disclosure on every page footer per FREE_MIGRATION §3 / §5.
+  legalStrip:
+    "Donations are not tax-deductible. HantaVirusTrack is not a registered charity.",
 };
 
 export const map = {
