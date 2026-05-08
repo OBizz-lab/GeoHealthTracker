@@ -1,12 +1,13 @@
 "use client";
 
-import { Globe2, FlaskConical, BellRing } from "lucide-react";
+import { Globe2, FlaskConical, BellRing, Coffee } from "lucide-react";
 import { features } from "@/lib/copy";
 
 const ICONS = {
   Globe2,
   FlaskConical,
   BellRing,
+  Coffee,
 } as const;
 
 // =============================================================================
