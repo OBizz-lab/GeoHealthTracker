@@ -124,8 +124,10 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
     const bounds = new mapboxgl.LngLatBounds();
     reports.forEach((r) => bounds.extend([r.lng, r.lat]));
     if (!bounds.isEmpty()) {
+      const cw = containerRef.current?.offsetWidth ?? 800;
+      const rightPad = cw > 640 ? 380 : 40;
       map.fitBounds(bounds, {
-        padding: { top: 80, bottom: 80, left: 80, right: 480 },
+        padding: { top: 40, bottom: 40, left: 40, right: rightPad },
         duration: 0,
         maxZoom: 4,
       });
