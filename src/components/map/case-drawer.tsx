@@ -52,11 +52,14 @@ export function CaseDrawer({ report, onClose }: CaseDrawerProps) {
     <aside
       role="dialog"
       aria-label={`Case detail for ${report.location_name}`}
-      className="pointer-events-auto absolute right-0 top-0 z-30 flex h-full flex-col"
+      className="flex h-full w-full flex-col"
       style={{
-        width:        380,
-        background:   "var(--bg-surface)",
-        borderLeft:   "1px solid var(--border-subtle)",
+        background:           "var(--bg-surface)",
+        borderLeft:           "1px solid var(--border-subtle)",
+        // Mobile bottom-sheet rounding (CSS handles it harmlessly on desktop)
+        borderTopLeftRadius:  16,
+        borderTopRightRadius: 16,
+        boxShadow:            "0 -8px 32px rgba(0,0,0,0.5)",
       }}
     >
       {/* Header */}

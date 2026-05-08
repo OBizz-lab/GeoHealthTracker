@@ -7,6 +7,7 @@ import { getSupabaseClient } from "./client";
 
 interface DbCase {
   id: string;
+  kind: string;
   location_lat: number | null;
   location_lng: number | null;
   location_name: string | null;
@@ -49,6 +50,7 @@ function dbCaseToReport(row: DbCase): Report | null {
 
   return {
     id: row.id,
+    kind: row.kind === "mention" ? "mention" : "confirmed",
     lat: row.location_lat,
     lng: row.location_lng,
     location_name: row.location_name ?? "Unknown",
@@ -77,6 +79,7 @@ export async function fetchPublishedCases(): Promise<Report[]> {
     .from("cases")
     .select(`
       id,
+      kind,
       location_lat,
       location_lng,
       location_name,

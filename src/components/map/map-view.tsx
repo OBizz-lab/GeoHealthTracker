@@ -4,7 +4,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
-import { CaseDrawer } from "@/components/map/case-drawer";
+import { centroidFor } from "@/lib/country-centroids";
 import type { Report, ReportStatus } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -41,18 +41,66 @@ const STATUS_LABEL: Record<ReportStatus, string> = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function toGeoJSON(reports: Report[]) {
+function toCasesGeoJSON(reports: Report[]) {
+  // Only confirmed cases go into the case-marker source. Mentions are
+  // aggregated separately into a per-country centroid layer.
   return {
     type: "FeatureCollection" as const,
-    features: reports.map((r) => ({
+    features: reports
+      .filter((r) => r.kind === "confirmed")
+      .map((r) => ({
+        type: "Feature" as const,
+        properties: {
+          id:         r.id,
+          status:     r.status,
+          color:      STATUS_COLOR[r.status] ?? "#5BC0EB",
+          case_count: r.case_count,
+        },
+        geometry: { type: "Point" as const, coordinates: [r.lng, r.lat] as [number, number] },
+      })),
+  };
+}
+
+// =============================================================================
+// Mention aggregation — group news/mention rows by country, snap each group
+// to the country's centroid, and render one marker per country regardless of
+// how many articles came in.
+// =============================================================================
+export interface CountryMentions {
+  iso:       string;
+  centroid:  [number, number];
+  count:     number;
+  reports:   Report[];
+}
+
+export function aggregateMentionsByCountry(reports: Report[]): Map<string, CountryMentions> {
+  const out = new Map<string, CountryMentions>();
+  for (const r of reports) {
+    if (r.kind !== "mention") continue;
+    if (!r.country || r.country === "ZZ") continue;
+    const centroid = centroidFor(r.country);
+    if (!centroid) continue;
+    const cur = out.get(r.country);
+    if (!cur) {
+      out.set(r.country, { iso: r.country, centroid, count: 1, reports: [r] });
+    } else {
+      cur.count += 1;
+      cur.reports.push(r);
+    }
+  }
+  return out;
+}
+
+function toMentionsGeoJSON(mentions: Map<string, CountryMentions>) {
+  return {
+    type: "FeatureCollection" as const,
+    features: Array.from(mentions.values()).map((m) => ({
       type: "Feature" as const,
       properties: {
-        id:         r.id,
-        status:     r.status,
-        color:      STATUS_COLOR[r.status] ?? "#5BC0EB",
-        case_count: r.case_count,
+        iso:   m.iso,
+        count: m.count,
       },
-      geometry: { type: "Point" as const, coordinates: [r.lng, r.lat] as [number, number] },
+      geometry: { type: "Point" as const, coordinates: m.centroid },
     })),
   };
 }
@@ -74,8 +122,10 @@ export interface CountryStats {
 }
 
 export function aggregateByCountry(reports: Report[]): Map<string, CountryStats> {
+  // CONFIRMED cases only — news mentions never paint the country fill.
   const out = new Map<string, CountryStats>();
   for (const r of reports) {
+    if (r.kind !== "confirmed") continue;
     if (!r.country || r.country === "ZZ") continue;
     const prev = out.get(r.country);
     if (!prev) {
@@ -142,15 +192,31 @@ interface MapViewProps {
   reports:            Report[];
   mapboxToken:        string | undefined;
   showCountryHeatmap: boolean;
+  /** Called when the user clicks a confirmed-case marker. Shell owns drawer state. */
+  onSelectConfirmed?: (report: Report) => void;
+  /** Called when the user clicks a per-country news-mention marker. */
+  onSelectMentions?:  (country: CountryMentions) => void;
 }
 
-export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewProps) {
-  const containerRef    = useRef<HTMLDivElement | null>(null);
-  const mapRef          = useRef<mapboxgl.Map | null>(null);
-  const reportByIdRef   = useRef<Map<string, Report>>(new Map());
-  const countryStatsRef = useRef<Map<string, CountryStats>>(new Map());
-  const hoverPopupRef   = useRef<mapboxgl.Popup | null>(null);
-  const [selected, setSelected] = useState<Report | null>(null);
+export function MapView({
+  reports,
+  mapboxToken,
+  showCountryHeatmap,
+  onSelectConfirmed,
+  onSelectMentions,
+}: MapViewProps) {
+  const containerRef        = useRef<HTMLDivElement | null>(null);
+  const mapRef              = useRef<mapboxgl.Map | null>(null);
+  const reportByIdRef       = useRef<Map<string, Report>>(new Map());
+  const countryStatsRef     = useRef<Map<string, CountryStats>>(new Map());
+  const countryMentionsRef  = useRef<Map<string, CountryMentions>>(new Map());
+  const hoverPopupRef       = useRef<mapboxgl.Popup | null>(null);
+  // Refs for callbacks so the once-installed click handlers always see the
+  // current shell-owned setters (avoids stale-closure bugs on re-render).
+  const onSelectConfirmedRef = useRef(onSelectConfirmed);
+  const onSelectMentionsRef  = useRef(onSelectMentions);
+  useEffect(() => { onSelectConfirmedRef.current = onSelectConfirmed; }, [onSelectConfirmed]);
+  useEffect(() => { onSelectMentionsRef.current  = onSelectMentions;  }, [onSelectMentions]);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
@@ -159,12 +225,15 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
     reportByIdRef.current = m;
   }, [reports]);
 
-  const geoJSON       = useMemo(() => toGeoJSON(reports), [reports]);
-  const countryStats  = useMemo(() => aggregateByCountry(reports), [reports]);
+  const casesGeoJSON       = useMemo(() => toCasesGeoJSON(reports), [reports]);
+  const countryStats       = useMemo(() => aggregateByCountry(reports), [reports]);
+  const countryMentions    = useMemo(() => aggregateMentionsByCountry(reports), [reports]);
+  const mentionsGeoJSON    = useMemo(() => toMentionsGeoJSON(countryMentions), [countryMentions]);
   const countryExpressions = useMemo(() => buildCountryExpressions(countryStats), [countryStats]);
 
-  // Keep stats fresh for the hover handler closure
-  useEffect(() => { countryStatsRef.current = countryStats; }, [countryStats]);
+  // Keep refs fresh for closure-based event handlers
+  useEffect(() => { countryStatsRef.current    = countryStats;    }, [countryStats]);
+  useEffect(() => { countryMentionsRef.current = countryMentions; }, [countryMentions]);
 
   // ── Init map ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -286,7 +355,50 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
         },
       });
 
-      for (const layer of ["clusters", "unclustered-case"]) {
+      // ── News-mention markers (per-country centroid) ──────────────────────
+      // Hollow neutral circles, visually distinct from the colored confirmed
+      // markers above. One marker per country, regardless of how many news
+      // articles came in.
+      map.addSource("mentions", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+      // Outer halo so the hollow ring stays visible against the dark map
+      map.addLayer({
+        id: "mention-halo", type: "circle", source: "mentions",
+        paint: {
+          "circle-color":   "#5BC0EB",
+          "circle-radius":  ["interpolate", ["linear"], ["zoom"], 1, 14, 6, 22],
+          "circle-opacity": 0.10,
+        },
+      });
+      // Hollow centroid marker
+      map.addLayer({
+        id: "mention-marker", type: "circle", source: "mentions",
+        paint: {
+          "circle-color":        "rgba(91,192,235,0.10)",
+          "circle-stroke-color": "#5BC0EB",
+          "circle-stroke-width": 2,
+          "circle-radius":       ["interpolate", ["linear"], ["zoom"], 1, 10, 6, 16],
+          "circle-opacity":      1,
+        },
+      });
+      // Article-count text inside the marker
+      map.addLayer({
+        id: "mention-count", type: "symbol", source: "mentions",
+        layout: {
+          "text-field": ["get", "count"],
+          "text-font":  ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
+          "text-size":  11,
+        },
+        paint: {
+          "text-color":      "#5BC0EB",
+          "text-halo-color": "rgba(10,14,26,0.85)",
+          "text-halo-width": 1.5,
+        },
+      });
+
+      for (const layer of ["clusters", "unclustered-case", "mention-marker"]) {
         map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
         map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
       }
@@ -311,12 +423,28 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
         if (!id) return;
         const r = reportByIdRef.current.get(id);
         if (!r) return;
-        setSelected(r);
+        onSelectConfirmedRef.current?.(r);
         // Nudge map ~120px left so the marker isn't behind the drawer (DESIGN §5.5)
         const projected = map.project([r.lng, r.lat]);
         map.easeTo({
           center: map.unproject([projected.x + 60, projected.y]),
           zoom:   Math.max(map.getZoom(), 5),
+          duration: 800,
+        });
+      });
+
+      // ── Mention-marker click → open mentions drawer ──────────────────────
+      map.on("click", "mention-marker", (e) => {
+        const iso = e.features?.[0]?.properties?.iso as string | undefined;
+        if (!iso) return;
+        const country = countryMentionsRef.current.get(iso);
+        if (!country) return;
+        onSelectMentionsRef.current?.(country);
+        // Same drawer-nudge treatment as confirmed markers
+        const projected = map.project(country.centroid);
+        map.easeTo({
+          center: map.unproject([projected.x + 60, projected.y]),
+          zoom:   Math.max(map.getZoom(), 4),
           duration: 800,
         });
       });
@@ -380,7 +508,23 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
     });
 
     mapRef.current = map;
+
+    // ── Container ResizeObserver — keep the canvas matched to its parent
+    // so the filter rail expanding or the drawer opening re-flows the map
+    // instead of leaving black bars or clipping. Mapbox needs an explicit
+    // .resize() call whenever its container's box changes.
+    let resizeObserver: ResizeObserver | null = null;
+    if (containerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        // requestAnimationFrame so resize happens after the CSS transition
+        // settles a tick — avoids resize-during-layout jank.
+        requestAnimationFrame(() => map.resize());
+      });
+      resizeObserver.observe(containerRef.current);
+    }
+
     return () => {
+      resizeObserver?.disconnect();
       hoverPopupRef.current?.remove();
       hoverPopupRef.current = null;
       map.remove();
@@ -394,9 +538,12 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
     const map = mapRef.current;
     if (!map || !mapReady) return;
     (map.getSource("cases") as mapboxgl.GeoJSONSource | undefined)?.setData(
-      geoJSON as Parameters<mapboxgl.GeoJSONSource["setData"]>[0],
+      casesGeoJSON as Parameters<mapboxgl.GeoJSONSource["setData"]>[0],
     );
-  }, [geoJSON, mapReady]);
+    (map.getSource("mentions") as mapboxgl.GeoJSONSource | undefined)?.setData(
+      mentionsGeoJSON as Parameters<mapboxgl.GeoJSONSource["setData"]>[0],
+    );
+  }, [casesGeoJSON, mentionsGeoJSON, mapReady]);
 
   // ── Sync country choropleth ───────────────────────────────────────────────
   useEffect(() => {
@@ -416,16 +563,6 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
     /* eslint-enable @typescript-eslint/no-explicit-any */
   }, [countryExpressions, mapReady, showCountryHeatmap]);
 
-  // ── Esc closes drawer ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!selected) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setSelected(null);
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selected]);
-
   if (!mapboxToken) {
     return (
       <div
@@ -442,7 +579,6 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
-      <CaseDrawer report={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

@@ -86,18 +86,30 @@ function extractWhoLocation(title: string): {
 // ---------------------------------------------------------------------------
 // Fetch
 // ---------------------------------------------------------------------------
+// Hard floor for ingestion — never pull WHO DON entries older than this
+// (DESIGN: only the current ongoing outbreak; ignore archived historical ones).
+const INGESTION_WINDOW_DAYS = 60;
+
 async function fetchWhoDon(ctx: FetchContext): Promise<FetchResult> {
   const fetchedAt = new Date();
 
-  // Build OData filter — hantavirus in title, ordered by publication date desc
-  // If we have a lastSuccessAt, add a LastModified filter for incremental fetching
-  const filterClauses = ["contains(tolower(Title),'hantavirus')"];
-  if (ctx.lastSuccessAt) {
-    filterClauses.push(`LastModified gt ${ctx.lastSuccessAt.toISOString()}`);
-  }
+  // Build OData filter — hantavirus in title AND inside the ingestion window.
+  // The 60-day floor wins over `lastSuccessAt` if the latter is older.
+  const windowFloor = new Date(
+    fetchedAt.getTime() - INGESTION_WINDOW_DAYS * 86_400_000,
+  );
+  const dateFloor =
+    ctx.lastSuccessAt && ctx.lastSuccessAt > windowFloor
+      ? ctx.lastSuccessAt
+      : windowFloor;
+
+  const filterClauses = [
+    "contains(tolower(Title),'hantavirus')",
+    `PublicationDateAndTime gt ${dateFloor.toISOString()}`,
+  ];
 
   const params = new URLSearchParams({
-    $filter: filterClauses.join(" or "),
+    $filter: filterClauses.join(" and "),
     $select:
       "Id,Title,PublicationDateAndTime,LastModified,ItemDefaultUrl,Overview,Assessment,Summary",
     $orderby: "PublicationDateAndTime desc",
@@ -137,10 +149,20 @@ async function fetchWhoDon(ctx: FetchContext): Promise<FetchResult> {
     };
   }
 
-  // Secondary filter: also check body text for hantavirus terms
+  // Secondary filters:
+  //   1. Body text actually mentions a hantavirus term (catches items that
+  //      have the word in the title only because of WHO disambiguation).
+  //   2. PublicationDateAndTime is within the ingestion window.
   const hantaItems = items.filter((item) => {
     const combined = `${item.Title} ${item.Overview ?? ""} ${item.Summary ?? ""}`;
-    return HANTA_TERMS.test(combined);
+    if (!HANTA_TERMS.test(combined)) return false;
+    try {
+      const pub = new Date(item.PublicationDateAndTime);
+      if (pub < windowFloor) return false;
+    } catch {
+      return false;
+    }
+    return true;
   });
 
   return {

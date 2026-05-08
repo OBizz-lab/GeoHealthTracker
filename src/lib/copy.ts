@@ -234,3 +234,29 @@ export const map = {
     "Map preview unavailable — set NEXT_PUBLIC_MAPBOX_TOKEN in .env.local to enable the interactive map.",
   loading: "Loading cases…",
 };
+
+// =============================================================================
+// Live Signal — copy strings (SOCIAL_INTEGRATION §3.7)
+// =============================================================================
+export const signalCopy = {
+  section_label:        "Live signal",
+  tab_news:             "Official news",
+  tab_reddit:           "Reddit chatter",
+  tab_reddit_chip:      "UNVERIFIED",
+  empty_news_title:     "No major news in the last 14 days.",
+  empty_news_body:      "We'll surface stories from the whitelist as they publish.",
+  empty_reddit_title:   "No new Reddit comments yet.",
+  empty_reddit_body:
+    "We'll surface top comments from the r/ContagionCuriosity 2026 hantavirus megathread as they post.",
+  error_title:          "Couldn't load this feed.",
+  error_body:           "Try again in a few minutes. The map data is unaffected.",
+  error_retry_label:    "Retry",
+  rate_limited_title:   "We're catching up.",
+  rate_limited_body:    "This feed will refresh shortly.",
+  disclaimer_news:
+    "Headlines from major newsrooms. We link directly to the publisher; we do not host or modify article content.",
+  disclaimer_reddit:
+    "Comments shown are unverified user posts from a public Reddit megathread, ranked by upvotes and recency. Inclusion does not imply accuracy or endorsement. Verified case data is on the map.",
+  expand_aria:          "Expand live signal",
+  collapse_aria:        "Collapse live signal",
+};

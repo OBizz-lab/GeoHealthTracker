@@ -2,8 +2,12 @@ export type ReportStatus = "confirmed" | "suspected" | "fatal" | "reported" | "r
 
 export type ReportSeverity = "low" | "moderate" | "high" | "critical";
 
+/** Discriminator: confirmed = official case data, mention = news/social signal. */
+export type ReportKind = "confirmed" | "mention";
+
 export interface Report {
   id: string;
+  kind: ReportKind;
   lat: number;
   lng: number;
   location_name: string;
@@ -17,6 +21,42 @@ export interface Report {
   case_count: number;
   notes: string;
   condition?: string;
+}
+
+// =============================================================================
+// Signal feed (Live Signal strip — SOCIAL_INTEGRATION.md §5.3)
+// =============================================================================
+
+export interface SignalNews {
+  id:                  string;
+  publisher_domain:    string;
+  publisher_name:      string;
+  publisher_logo_slug: string;
+  publisher_region:    string;
+  country:             string | null;
+  headline:            string;
+  url:                 string;
+  published_at:        string; // ISO
+  language:            string;
+}
+
+export interface SignalReddit {
+  id:                  string;     // 't1_xxxx'
+  thread_id:           string;     // 't3_xxxx'
+  subreddit:           string;
+  author:              string;
+  author_flair:        string | null;
+  body:                string;
+  permalink:           string;
+  thread_url:          string;
+  thread_title:        string;
+  ups:                 number;
+  num_replies:         number;
+  awards:              number;
+  velocity_score:      number;
+  created_at_reddit:   string;     // ISO
+  language:            string;
+  removed:             boolean;
 }
 
 export interface Source {

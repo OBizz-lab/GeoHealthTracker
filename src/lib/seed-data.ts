@@ -2,6 +2,7 @@ import type { Report } from "./types";
 
 export const seedReports: Report[] = [
   {
+    kind: "confirmed",
     id: "rpt_001",
     lat: 33.4484,
     lng: -112.074,
@@ -19,6 +20,7 @@ export const seedReports: Report[] = [
     condition: "Vector-borne (suspected West Nile)",
   },
   {
+    kind: "confirmed",
     id: "rpt_002",
     lat: 36.1699,
     lng: -115.1398,
@@ -36,6 +38,7 @@ export const seedReports: Report[] = [
     condition: "Respiratory illness",
   },
   {
+    kind: "confirmed",
     id: "rpt_003",
     lat: 35.0844,
     lng: -106.6504,
@@ -53,6 +56,7 @@ export const seedReports: Report[] = [
     condition: "Gastrointestinal",
   },
   {
+    kind: "confirmed",
     id: "rpt_004",
     lat: 32.7157,
     lng: -117.1611,
@@ -68,6 +72,7 @@ export const seedReports: Report[] = [
     condition: "Influenza-like illness",
   },
   {
+    kind: "confirmed",
     id: "rpt_005",
     lat: 31.7619,
     lng: -106.485,
@@ -84,6 +89,7 @@ export const seedReports: Report[] = [
     condition: "Respiratory illness",
   },
   {
+    kind: "confirmed",
     id: "rpt_006",
     lat: -12.0464,
     lng: -77.0428,
@@ -100,6 +106,7 @@ export const seedReports: Report[] = [
     condition: "Dengue",
   },
   {
+    kind: "confirmed",
     id: "rpt_007",
     lat: -33.4489,
     lng: -70.6693,
@@ -115,6 +122,7 @@ export const seedReports: Report[] = [
     condition: "Respiratory illness",
   },
   {
+    kind: "confirmed",
     id: "rpt_008",
     lat: -34.6037,
     lng: -58.3816,
@@ -130,6 +138,7 @@ export const seedReports: Report[] = [
     condition: "Hantavirus (suspected)",
   },
   {
+    kind: "confirmed",
     id: "rpt_009",
     lat: -23.5505,
     lng: -46.6333,
@@ -146,6 +155,7 @@ export const seedReports: Report[] = [
     condition: "Dengue",
   },
   {
+    kind: "confirmed",
     id: "rpt_010",
     lat: 4.711,
     lng: -74.0721,
@@ -161,6 +171,7 @@ export const seedReports: Report[] = [
     condition: "Leptospirosis",
   },
   {
+    kind: "confirmed",
     id: "rpt_011",
     lat: 51.5074,
     lng: -0.1278,
@@ -177,6 +188,7 @@ export const seedReports: Report[] = [
     condition: "Measles",
   },
   {
+    kind: "confirmed",
     id: "rpt_012",
     lat: 48.8566,
     lng: 2.3522,
@@ -192,6 +204,7 @@ export const seedReports: Report[] = [
     condition: "Legionellosis",
   },
   {
+    kind: "confirmed",
     id: "rpt_013",
     lat: 52.52,
     lng: 13.405,
@@ -208,6 +221,7 @@ export const seedReports: Report[] = [
     condition: "Gastrointestinal",
   },
   {
+    kind: "confirmed",
     id: "rpt_014",
     lat: 41.9028,
     lng: 12.4964,
@@ -223,6 +237,7 @@ export const seedReports: Report[] = [
     condition: "Tick-borne",
   },
   {
+    kind: "confirmed",
     id: "rpt_015",
     lat: 40.4168,
     lng: -3.7038,
@@ -238,6 +253,7 @@ export const seedReports: Report[] = [
     condition: "Pertussis",
   },
   {
+    kind: "confirmed",
     id: "rpt_016",
     lat: 37.9838,
     lng: 23.7275,
@@ -253,6 +269,7 @@ export const seedReports: Report[] = [
     condition: "Salmonellosis",
   },
   {
+    kind: "confirmed",
     id: "rpt_017",
     lat: 35.6762,
     lng: 139.6503,
@@ -269,6 +286,7 @@ export const seedReports: Report[] = [
     condition: "Influenza B",
   },
   {
+    kind: "confirmed",
     id: "rpt_018",
     lat: 37.5665,
     lng: 126.978,
@@ -285,6 +303,7 @@ export const seedReports: Report[] = [
     condition: "Gastrointestinal",
   },
   {
+    kind: "confirmed",
     id: "rpt_019",
     lat: 31.2304,
     lng: 121.4737,
@@ -300,6 +319,7 @@ export const seedReports: Report[] = [
     condition: "Hand-foot-and-mouth",
   },
   {
+    kind: "confirmed",
     id: "rpt_020",
     lat: 22.3193,
     lng: 114.1694,
@@ -316,6 +336,7 @@ export const seedReports: Report[] = [
     condition: "Scarlet fever",
   },
   {
+    kind: "confirmed",
     id: "rpt_021",
     lat: 1.3521,
     lng: 103.8198,
@@ -332,6 +353,7 @@ export const seedReports: Report[] = [
     condition: "Dengue",
   },
   {
+    kind: "confirmed",
     id: "rpt_022",
     lat: 14.5995,
     lng: 120.9842,
@@ -347,6 +369,7 @@ export const seedReports: Report[] = [
     condition: "Leptospirosis",
   },
   {
+    kind: "confirmed",
     id: "rpt_023",
     lat: 13.7563,
     lng: 100.5018,
@@ -363,6 +386,7 @@ export const seedReports: Report[] = [
     condition: "Chikungunya",
   },
   {
+    kind: "confirmed",
     id: "rpt_024",
     lat: -6.2088,
     lng: 106.8456,
@@ -378,6 +402,7 @@ export const seedReports: Report[] = [
     condition: "Dengue / Typhoid",
   },
   {
+    kind: "confirmed",
     id: "rpt_025",
     lat: 32.0853,
     lng: 34.7818,

@@ -61,6 +61,9 @@ interface FiltersPanelProps {
   // Source health (optional)
   sourceHealth?:     { slug: string; label: string; status: "green" | "yellow" | "red" }[];
   onClearAll?:       () => void;
+  /** When true, panel fills its parent (used by mobile bottom sheet). Hides
+      the collapse-rail behaviour and the right border. */
+  fullWidth?:        boolean;
 }
 
 function FilterChip({
@@ -111,6 +114,7 @@ export function FiltersPanel(props: FiltersPanelProps) {
     allSources, activeSources, onToggleSource,
     activeRegion, onRegionChange,
     sourceHealth, onClearAll,
+    fullWidth = false,
   } = props;
 
   const activeCount =
@@ -121,7 +125,7 @@ export function FiltersPanel(props: FiltersPanelProps) {
     (activeRegion ? 1 : 0);
 
   // ─────────────────────────────────────────── Collapsed (rail)
-  if (collapsed) {
+  if (collapsed && !fullWidth) {
     return (
       <div
         className="pointer-events-auto flex flex-col items-center"
@@ -148,9 +152,9 @@ export function FiltersPanel(props: FiltersPanelProps) {
     <div
       className="pointer-events-auto flex flex-col"
       style={{
-        width:         320,
+        width:         fullWidth ? "100%" : 320,
         background:    "var(--bg-surface)",
-        borderRight:   "1px solid var(--border-subtle)",
+        borderRight:   fullWidth ? "none" : "1px solid var(--border-subtle)",
         height:        "100%",
       }}
     >
@@ -173,14 +177,14 @@ export function FiltersPanel(props: FiltersPanelProps) {
           >
             Clear all
           </button>
-        ) : (
+        ) : !fullWidth ? (
           <button
             onClick={() => setCollapsed(true)}
             aria-label="Collapse"
           >
             <ChevronLeft className="h-3.5 w-3.5" style={{ color: "var(--text-tertiary)" }} />
           </button>
-        )}
+        ) : null}
       </div>
 
       {/* Body */}

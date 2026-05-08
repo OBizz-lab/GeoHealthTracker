@@ -181,9 +181,17 @@ function extractWhoLocation(title: string): { country: string; admin: string | n
   return { country, admin: m.groups.admin?.trim() ?? null };
 }
 
+// Hard floor for ingestion — only entries from the past 60 days. Older
+// archived items are intentionally ignored (DESIGN: current outbreak only).
+const INGESTION_WINDOW_DAYS = 60;
+
 async function fetchWhoDon(): Promise<{ cases: CanonicalCase[]; error?: string }> {
+  const windowFloor = new Date(Date.now() - INGESTION_WINDOW_DAYS * 86_400_000);
+
   const params = new URLSearchParams({
-    $filter: "contains(tolower(Title),'hantavirus')",
+    $filter:
+      "contains(tolower(Title),'hantavirus') and " +
+      `PublicationDateAndTime gt ${windowFloor.toISOString()}`,
     $select: "Id,Title,PublicationDateAndTime,ItemDefaultUrl,Overview,Assessment,Summary",
     $orderby: "PublicationDateAndTime desc",
     $top: "50",
@@ -201,9 +209,11 @@ async function fetchWhoDon(): Promise<{ cases: CanonicalCase[]; error?: string }
   if (!resp.ok) return { cases: [], error: `HTTP ${resp.status} from WHO DON API` };
 
   const json = await resp.json() as { value: WhoItem[] };
-  const items = (json.value ?? []).filter(
-    (item) => HANTA_RE.test(`${item.Title} ${item.Overview ?? ""} ${item.Summary ?? ""}`)
-  );
+  const items = (json.value ?? []).filter((item) => {
+    if (!HANTA_RE.test(`${item.Title} ${item.Overview ?? ""} ${item.Summary ?? ""}`)) return false;
+    try { return new Date(item.PublicationDateAndTime) >= windowFloor; }
+    catch { return false; }
+  });
 
   const cases: CanonicalCase[] = items.map((item) => {
     const title = item.Title ?? "";
