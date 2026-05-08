@@ -100,44 +100,74 @@ export default function AdminSubmitPage() {
     }
 
     setSubmitting(true);
+
+    // Wrap every supabase call in a 15s timeout so the form never
+    // permanently hangs. If the request is blocked by an ad-blocker or
+    // browser extension (ERR_BLOCKED_BY_CLIENT), the fetch promise never
+    // resolves — without the timeout the button would stay "Submitting..."
+    // forever and queue subsequent requests too.
+    function withTimeout<T>(label: string, p: PromiseLike<T>, ms = 15_000): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        const t = setTimeout(() => {
+          reject(new Error(
+            `Request "${label}" timed out after ${ms / 1000}s. ` +
+            `This is usually caused by an ad-blocker or browser extension ` +
+            `blocking Supabase. Try disabling extensions on this site or ` +
+            `using a different browser.`
+          ));
+        }, ms);
+        Promise.resolve(p).then(
+          (v) => { clearTimeout(t); resolve(v); },
+          (e) => { clearTimeout(t); reject(e); },
+        );
+      });
+    }
+
     try {
       const supabase = getSupabaseClientStrict();
 
-      const { data: sess, error: sessErr } = await supabase.auth.getSession();
+      const { data: sess, error: sessErr } = await withTimeout(
+        "auth.getSession",
+        supabase.auth.getSession(),
+      );
       if (sessErr) { setError(`Session error: ${sessErr.message}`); setSubmitting(false); return; }
       const userId = sess.session?.user.id;
       if (!userId) { setError("Session expired. Sign in again."); setSubmitting(false); return; }
 
-      const { data: disease, error: diseaseErr } = await supabase
-        .from("diseases")
-        .select("id")
-        .eq("slug", "hantavirus")
-        .single();
+      const { data: disease, error: diseaseErr } = await withTimeout(
+        "diseases lookup",
+        supabase
+          .from("diseases")
+          .select("id")
+          .eq("slug", "hantavirus")
+          .single(),
+      );
       if (diseaseErr) { setError(`Disease lookup failed: ${diseaseErr.message}`); setSubmitting(false); return; }
       if (!disease) { setError("Cannot resolve disease."); setSubmitting(false); return; }
 
-      const { error: insertErr } = await supabase.from("cases").insert({
-        disease_id:     (disease as { id: string }).id,
-        kind:           "confirmed",
-        source_url:     form.source_url,
-        location_name:  form.location_name || null,
-        country:        form.country.toUpperCase() || null,
-        state_province: form.state_province || null,
-        location_lat:   lat,
-        location_lng:   lng,
-        status:         form.status,
-        strain:         form.strain || null,
-        case_count:     cc,
-        fatality_count: fc,
-        reported_date:  form.reported_date,
-        notes:          form.notes || null,
-        is_published:   false,
-        submitted_by:   userId,
-      });
+      const { error: insertErr } = await withTimeout(
+        "cases insert",
+        supabase.from("cases").insert({
+          disease_id:     (disease as { id: string }).id,
+          kind:           "confirmed",
+          source_url:     form.source_url,
+          location_name:  form.location_name || null,
+          country:        form.country.toUpperCase() || null,
+          state_province: form.state_province || null,
+          location_lat:   lat,
+          location_lng:   lng,
+          status:         form.status,
+          strain:         form.strain || null,
+          case_count:     cc,
+          fatality_count: fc,
+          reported_date:  form.reported_date,
+          notes:          form.notes || null,
+          is_published:   false,
+          submitted_by:   userId,
+        }),
+      );
 
       if (insertErr) {
-        // Surface the full error including code so we can debug RLS/CHECK
-        // failures the user might otherwise never see.
         console.error("[submit] insert failed", insertErr);
         setError(`Insert failed: ${insertErr.message}${insertErr.code ? ` (code ${insertErr.code})` : ""}`);
         setSubmitting(false);
