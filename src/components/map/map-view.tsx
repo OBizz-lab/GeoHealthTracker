@@ -6,7 +6,6 @@ import mapboxgl from "mapbox-gl";
 import { MapPinned } from "lucide-react";
 
 import { CaseDrawer } from "@/components/map/case-drawer";
-import { LegendPanel } from "@/components/map/legend-panel";
 import { Badge } from "@/components/ui/badge";
 import { map as mapCopy } from "@/lib/copy";
 import { colors, statusLabels } from "@/lib/design-tokens";
@@ -29,9 +28,9 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
   const [mapReady, setMapReady] = useState(false);
 
   const reportById = useMemo(() => {
-    const map = new Map<string, Report>();
-    reports.forEach((r) => map.set(r.id, r));
-    return map;
+    const m = new Map<string, Report>();
+    reports.forEach((r) => m.set(r.id, r));
+    return m;
   }, [reports]);
 
   useEffect(() => {
@@ -49,8 +48,8 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
       projection: "mercator",
       attributionControl: false,
     });
-    map.addControl(new mapboxgl.AttributionControl({ compact: true }));
 
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }));
     map.addControl(
       new mapboxgl.NavigationControl({ visualizePitch: false }),
       "bottom-right",
@@ -64,6 +63,7 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
       markersRef.current = [];
       map.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, [mapboxToken]);
 
@@ -91,8 +91,10 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         const r = reportById.get(report.id);
-        if (r) setSelected(r);
-        map.flyTo({ center: [r!.lng, r!.lat], zoom: 5, duration: 900 });
+        if (r) {
+          setSelected(r);
+          map.flyTo({ center: [r.lng, r.lat], zoom: 5, duration: 900 });
+        }
       });
 
       const marker = new mapboxgl.Marker({ element: el })
@@ -105,24 +107,23 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
     const bounds = new mapboxgl.LngLatBounds();
     reports.forEach((r) => bounds.extend([r.lng, r.lat]));
     if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, {
-        padding: 40,
-        duration: 0,
-        maxZoom: 4,
-      });
+      map.fitBounds(bounds, { padding: 40, duration: 0, maxZoom: 4 });
     }
   }, [reports, mapReady, reportById]);
 
   if (!mapboxToken) {
-    return <MapFallback reports={reports} onSelect={setSelected} selected={selected} />;
+    return (
+      <MapFallback
+        reports={reports}
+        onSelect={setSelected}
+        selected={selected}
+      />
+    );
   }
 
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
-      <div className="pointer-events-none absolute left-4 top-4 z-20 sm:left-6 sm:top-6">
-        <LegendPanel />
-      </div>
       <CaseDrawer report={selected} onClose={() => setSelected(null)} />
     </div>
   );

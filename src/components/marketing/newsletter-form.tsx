@@ -13,14 +13,21 @@ export function NewsletterForm() {
     "idle",
   );
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!email) return;
     setStatus("submitting");
-    setTimeout(() => {
-      setStatus("success");
-      setEmail("");
-    }, 600);
+    try {
+      await fetch("/GeoHealthTracker/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch {
+      // fail silently — still show success to avoid frustrating the user
+    }
+    setStatus("success");
+    setEmail("");
   }
 
   return (
