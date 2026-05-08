@@ -3,121 +3,313 @@
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
-import { MapPinned } from "lucide-react";
 
 import { CaseDrawer } from "@/components/map/case-drawer";
-import { Badge } from "@/components/ui/badge";
-import { map as mapCopy } from "@/lib/copy";
-import { colors, statusLabels } from "@/lib/design-tokens";
-import type { Report } from "@/lib/types";
+import type { Report, ReportStatus } from "@/lib/types";
 
-interface MapViewProps {
-  reports: Report[];
-  mapboxToken: string | undefined;
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
+const INIT_CENTER: [number, number] = [-20, 15];
+const INIT_ZOOM = 1.8;
+
+const STATUS_COLOR: Record<ReportStatus, string> = {
+  fatal:     "#ef4444",
+  confirmed: "#f97316",
+  suspected: "#f59e0b",
+  reported:  "#3b82f6",
+  resolved:  "#22c55e",
+};
+
+// Softer fill palette for country choropleth (slightly less saturated so they
+// read as background context rather than foreground data)
+const FILL_COLOR: Record<ReportStatus, string> = {
+  fatal:     "#dc2626",
+  confirmed: "#ea580c",
+  suspected: "#d97706",
+  reported:  "#2563eb",
+  resolved:  "#16a34a",
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function toGeoJSON(reports: Report[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: reports.map((r) => ({
+      type: "Feature" as const,
+      properties: {
+        id:         r.id,
+        status:     r.status,
+        color:      STATUS_COLOR[r.status] ?? "#3b82f6",
+        case_count: r.case_count,
+      },
+      geometry: { type: "Point" as const, coordinates: [r.lng, r.lat] as [number, number] },
+    })),
+  };
 }
 
-const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
-const DEFAULT_CENTER: [number, number] = [10, 20];
-const DEFAULT_ZOOM = 1.6;
+function buildCountryExpressions(reports: Report[]) {
+  const rank: Record<string, number> = {
+    resolved: 0, reported: 1, suspected: 2, confirmed: 3, fatal: 4,
+  };
+  const countryStatus = new Map<string, ReportStatus>();
+  for (const r of reports) {
+    if (!r.country || r.country === "ZZ") continue;
+    const prev = countryStatus.get(r.country);
+    if (!prev || rank[r.status] > rank[prev]) countryStatus.set(r.country, r.status);
+  }
+  if (countryStatus.size === 0) return null;
 
-export function MapView({ reports, mapboxToken }: MapViewProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // match expression: ["match", field, val1, result1, ..., fallback]
+  const fillColor: unknown[]      = ["match", ["get", "iso_3166_1"]];
+  const fillOpacity: unknown[]    = ["match", ["get", "iso_3166_1"]];
+  const lineColor: unknown[]      = ["match", ["get", "iso_3166_1"]];
+  const lineOpacity: unknown[]    = ["match", ["get", "iso_3166_1"]];
+
+  countryStatus.forEach((status, iso) => {
+    fillColor.push(iso,    FILL_COLOR[status]);
+    fillOpacity.push(iso,  0.30);
+    lineColor.push(iso,    FILL_COLOR[status]);
+    lineOpacity.push(iso,  0.85);
+  });
+
+  fillColor.push("#000000");   fillOpacity.push(0);
+  lineColor.push("#000000");   lineOpacity.push(0);
+
+  return { fillColor, fillOpacity, lineColor, lineOpacity };
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+interface MapViewProps {
+  reports:            Report[];
+  mapboxToken:        string | undefined;
+  showCountryHeatmap: boolean;
+}
+
+export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewProps) {
+  const containerRef    = useRef<HTMLDivElement | null>(null);
+  const mapRef          = useRef<mapboxgl.Map | null>(null);
+  const reportByIdRef   = useRef<Map<string, Report>>(new Map());
   const [selected, setSelected] = useState<Report | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
-  const reportById = useMemo(() => {
+  // Keep reportById ref fresh without triggering re-renders
+  useEffect(() => {
     const m = new Map<string, Report>();
     reports.forEach((r) => m.set(r.id, r));
-    return m;
+    reportByIdRef.current = m;
   }, [reports]);
 
-  useEffect(() => {
-    if (!mapboxToken) return;
-    if (!containerRef.current) return;
-    if (mapRef.current) return;
+  const geoJSON            = useMemo(() => toGeoJSON(reports), [reports]);
+  const countryExpressions = useMemo(() => buildCountryExpressions(reports), [reports]);
 
+  // ── Init map once ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapboxToken || !containerRef.current || mapRef.current) return;
     mapboxgl.accessToken = mapboxToken;
 
     const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: MAP_STYLE,
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
-      projection: "mercator",
+      container:        containerRef.current,
+      style:            MAP_STYLE,
+      center:           INIT_CENTER,
+      zoom:             INIT_ZOOM,
+      projection:       "mercator",
       attributionControl: false,
     });
 
-    map.addControl(new mapboxgl.AttributionControl({ compact: true }));
-    map.addControl(
-      new mapboxgl.NavigationControl({ visualizePitch: false }),
-      "bottom-right",
-    );
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
 
-    map.on("load", () => setMapReady(true));
+    map.on("load", () => {
+      // Insert fill layers below the first symbol (label) layer
+      const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+
+      // ── Country choropleth ─────────────────────────────────────────────
+      map.addSource("country-boundaries", {
+        type: "vector",
+        url:  "mapbox://mapbox.country-boundaries-v1",
+      });
+      map.addLayer({
+        id:           "country-fill",
+        type:         "fill",
+        source:       "country-boundaries",
+        "source-layer": "country_boundaries",
+        filter:       ["in", ["get", "worldview"], ["literal", ["all", "US"]]],
+        paint:        { "fill-color": "#000000", "fill-opacity": 0 },
+      }, firstSymbol);
+      map.addLayer({
+        id:           "country-outline",
+        type:         "line",
+        source:       "country-boundaries",
+        "source-layer": "country_boundaries",
+        filter:       ["in", ["get", "worldview"], ["literal", ["all", "US"]]],
+        paint:        { "line-color": "#000000", "line-width": 1.5, "line-opacity": 0 },
+      }, firstSymbol);
+
+      // ── Reports cluster source ─────────────────────────────────────────
+      map.addSource("reports", {
+        type:         "geojson",
+        data:         { type: "FeatureCollection", features: [] },
+        cluster:      true,
+        clusterMaxZoom: 9,
+        clusterRadius:  50,
+      });
+
+      // Outer glow ring for clusters
+      map.addLayer({
+        id:     "cluster-glow",
+        type:   "circle",
+        source: "reports",
+        filter: ["has", "point_count"],
+        paint:  {
+          "circle-radius":  ["step", ["get", "point_count"], 28, 5, 36, 15, 46],
+          "circle-color":   "#ef4444",
+          "circle-opacity": 0.10,
+        },
+      });
+      // Cluster main circle
+      map.addLayer({
+        id:     "clusters",
+        type:   "circle",
+        source: "reports",
+        filter: ["has", "point_count"],
+        paint:  {
+          "circle-color": [
+            "step", ["get", "point_count"],
+            "#152038", 5, "#1e3055", 15, "#450a0a",
+          ],
+          "circle-radius": ["step", ["get", "point_count"], 18, 5, 24, 15, 32],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": [
+            "step", ["get", "point_count"],
+            "#3b82f6", 5, "#f59e0b", 15, "#ef4444",
+          ],
+          "circle-opacity": 0.95,
+        },
+      });
+      // Cluster count label
+      map.addLayer({
+        id:     "cluster-count",
+        type:   "symbol",
+        source: "reports",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field":        ["get", "point_count_abbreviated"],
+          "text-font":         ["DIN Offc Pro Bold", "Arial Unicode MS Bold"],
+          "text-size":         13,
+        },
+        paint: { "text-color": "#f4f4f5" },
+      });
+      // Single-point outer glow
+      map.addLayer({
+        id:     "point-glow",
+        type:   "circle",
+        source: "reports",
+        filter: ["!", ["has", "point_count"]],
+        paint:  {
+          "circle-color":   ["get", "color"],
+          "circle-radius":  ["interpolate", ["linear"], ["zoom"], 2, 12, 10, 22],
+          "circle-opacity": 0.18,
+        },
+      });
+      // Single point
+      map.addLayer({
+        id:     "unclustered-point",
+        type:   "circle",
+        source: "reports",
+        filter: ["!", ["has", "point_count"]],
+        paint:  {
+          "circle-color":        ["get", "color"],
+          "circle-radius":       ["interpolate", ["linear"], ["zoom"], 2, 5, 10, 10],
+          "circle-stroke-color": "rgba(0,0,0,0.65)",
+          "circle-stroke-width": 2,
+          "circle-opacity":      0.95,
+        },
+      });
+
+      // ── Cursors ────────────────────────────────────────────────────────
+      for (const layer of ["clusters", "unclustered-point"]) {
+        map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
+      }
+
+      // ── Cluster click → zoom in ────────────────────────────────────────
+      map.on("click", "clusters", (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ["clusters"] });
+        const clusterId = features[0]?.properties?.cluster_id as number | undefined;
+        if (!clusterId) return;
+        const src = map.getSource("reports") as mapboxgl.GeoJSONSource;
+        src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err || zoom == null) return;
+          map.easeTo({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            center: (features[0].geometry as any).coordinates as [number, number],
+            zoom,
+          });
+        });
+      });
+
+      // ── Single point click → drawer ────────────────────────────────────
+      map.on("click", "unclustered-point", (e) => {
+        const id = e.features?.[0]?.properties?.id as string | undefined;
+        if (!id) return;
+        const r = reportByIdRef.current.get(id);
+        if (!r) return;
+        setSelected(r);
+        map.flyTo({ center: [r.lng, r.lat], zoom: Math.max(map.getZoom(), 5), duration: 800 });
+      });
+
+      setMapReady(true);
+    });
+
     mapRef.current = map;
-
     return () => {
-      markersRef.current.forEach((m) => m.remove());
-      markersRef.current = [];
       map.remove();
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [mapboxToken]);
+  }, [mapboxToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Sync GeoJSON ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    (map.getSource("reports") as mapboxgl.GeoJSONSource | undefined)?.setData(geoJSON as Parameters<mapboxgl.GeoJSONSource["setData"]>[0]);
+  }, [geoJSON, mapReady]);
+
+  // ── Sync country choropleth ───────────────────────────────────────────────
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-
-    if (reports.length === 0) return;
-
-    reports.forEach((report) => {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.setAttribute("aria-label", `Report in ${report.location_name}`);
-      el.style.width = "16px";
-      el.style.height = "16px";
-      el.style.borderRadius = "999px";
-      el.style.background = colors.status[report.status];
-      el.style.border = "2px solid rgba(0,0,0,0.6)";
-      el.style.boxShadow = `0 0 0 4px ${colors.status[report.status]}33`;
-      el.style.cursor = "pointer";
-      el.style.padding = "0";
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const r = reportById.get(report.id);
-        if (r) {
-          setSelected(r);
-          map.flyTo({ center: [r.lng, r.lat], zoom: 5, duration: 900 });
-        }
-      });
-
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([report.lng, report.lat])
-        .addTo(map);
-
-      markersRef.current.push(marker);
-    });
-
-    const bounds = new mapboxgl.LngLatBounds();
-    reports.forEach((r) => bounds.extend([r.lng, r.lat]));
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, { padding: 40, duration: 0, maxZoom: 4 });
+    if (!showCountryHeatmap || !countryExpressions) {
+      map.setPaintProperty("country-fill",    "fill-opacity", 0);
+      map.setPaintProperty("country-outline", "line-opacity", 0);
+      return;
     }
-  }, [reports, mapReady, reportById]);
 
+    const { fillColor, fillOpacity, lineColor, lineOpacity } = countryExpressions;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    map.setPaintProperty("country-fill",    "fill-color",   fillColor   as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    map.setPaintProperty("country-fill",    "fill-opacity", fillOpacity as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    map.setPaintProperty("country-outline", "line-color",   lineColor   as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    map.setPaintProperty("country-outline", "line-opacity", lineOpacity as any);
+  }, [countryExpressions, mapReady, showCountryHeatmap]);
+
+  // ── No token fallback ─────────────────────────────────────────────────────
   if (!mapboxToken) {
     return (
-      <MapFallback
-        reports={reports}
-        onSelect={setSelected}
-        selected={selected}
-      />
+      <div className="flex h-full items-center justify-center bg-[#0a0f1e]">
+        <p className="text-sm text-zinc-500">Mapbox token not configured.</p>
+      </div>
     );
   }
 
@@ -125,58 +317,6 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
       <CaseDrawer report={selected} onClose={() => setSelected(null)} />
-    </div>
-  );
-}
-
-function MapFallback({
-  reports,
-  selected,
-  onSelect,
-}: {
-  reports: Report[];
-  selected: Report | null;
-  onSelect: (r: Report | null) => void;
-}) {
-  return (
-    <div className="relative flex h-full w-full">
-      <div className="flex flex-1 flex-col">
-        <div className="flex items-start gap-3 border-b border-border bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          <MapPinned className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>{mapCopy.noToken}</p>
-        </div>
-        <div className="flex-1 overflow-auto bg-background">
-          <ul className="mx-auto max-w-3xl divide-y divide-border">
-            {reports.map((r) => (
-              <li key={r.id}>
-                <button
-                  type="button"
-                  onClick={() => onSelect(r)}
-                  className="flex w-full items-start gap-3 px-4 py-4 text-left transition-colors hover:bg-card"
-                >
-                  <span
-                    className="mt-1.5 h-3 w-3 shrink-0 rounded-full"
-                    style={{ backgroundColor: colors.status[r.status] }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-zinc-100">
-                      {r.location_name},{" "}
-                      <span className="text-zinc-400">{r.country}</span>
-                    </p>
-                    <p className="mt-0.5 truncate text-xs text-zinc-500">
-                      {r.notes}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {statusLabels[r.status]}
-                  </Badge>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-      <CaseDrawer report={selected} onClose={() => onSelect(null)} />
     </div>
   );
 }

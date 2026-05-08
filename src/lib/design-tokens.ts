@@ -15,10 +15,11 @@ export const colors = {
   },
 
   status: {
-    confirmed: "#ef4444",
+    fatal:     "#ef4444",
+    confirmed: "#f97316",
     suspected: "#f59e0b",
-    reported: "#3b82f6",
-    resolved: "#22c55e",
+    reported:  "#3b82f6",
+    resolved:  "#22c55e",
   } as Record<ReportStatus, string>,
 
   severity: {
@@ -37,6 +38,7 @@ export const colors = {
 export const statusLabels: Record<ReportStatus, string> = {
   confirmed: "Confirmed",
   suspected: "Suspected",
+  fatal: "Fatal",
   reported: "Reported",
   resolved: "Resolved",
 };

@@ -1,4 +1,4 @@
-export type ReportStatus = "confirmed" | "suspected" | "reported" | "resolved";
+export type ReportStatus = "confirmed" | "suspected" | "fatal" | "reported" | "resolved";
 
 export type ReportSeverity = "low" | "moderate" | "high" | "critical";
 

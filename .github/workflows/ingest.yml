@@ -1,0 +1,148 @@
+name: Hantavirus Ingestion Pipeline
+
+on:
+  # Fast-cadence sources (ProMED): every 15 minutes
+  schedule:
+    - cron: "*/15 * * * *"
+
+  # Allow manual trigger from GitHub UI with cadence/slug override
+  workflow_dispatch:
+    inputs:
+      cadence:
+        description: "Cadence filter (fast | daily | all)"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - fast
+          - daily
+      slugs:
+        description: "Comma-separated source slugs (leave empty for all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: ingest-${{ github.ref }}
+  cancel-in-progress: false  # let running ingestion finish; don't cancel mid-write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Fast-cadence sources (every 15 min via cron)
+  # ---------------------------------------------------------------------------
+  ingest-fast:
+    name: Ingest fast sources
+    runs-on: ubuntu-latest
+    # Only run on cron; manual trigger uses ingest-manual below
+    if: github.event_name == 'schedule'
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run fast-cadence sources
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAPBOX_SECRET_TOKEN: ${{ secrets.MAPBOX_SECRET_TOKEN }}
+        run: npx tsx scripts/ingest.ts --cadence fast
+
+  # ---------------------------------------------------------------------------
+  # Daily sources (run once per day at 08:00 UTC via a separate cron — but
+  # we don't add a second schedule entry here to avoid double crons; instead
+  # this job runs when triggered manually OR when cron fires at 08:00).
+  # ---------------------------------------------------------------------------
+  ingest-daily:
+    name: Ingest daily sources
+    runs-on: ubuntu-latest
+    # Run at 08:00 UTC (GitHub cron doesn't support per-job schedules, so
+    # we gate inside the step using the current hour)
+    if: github.event_name == 'schedule'
+    timeout-minutes: 20
+
+    steps:
+      - name: Check if it's daily-run time (08:00 UTC ± 15 min)
+        id: check-time
+        run: |
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          # Run daily job only at the 08:00 cron tick (hour=08, minute=00)
+          if [ "$HOUR" = "08" ] && [ "$MINUTE" = "00" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.check-time.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.check-time.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        if: steps.check-time.outputs.run == 'true'
+        run: npm ci --ignore-scripts
+
+      - name: Run daily sources
+        if: steps.check-time.outputs.run == 'true'
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAPBOX_SECRET_TOKEN: ${{ secrets.MAPBOX_SECRET_TOKEN }}
+        run: npx tsx scripts/ingest.ts --cadence daily
+
+  # ---------------------------------------------------------------------------
+  # Manual trigger (workflow_dispatch)
+  # ---------------------------------------------------------------------------
+  ingest-manual:
+    name: Ingest (manual)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run pipeline (manual)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAPBOX_SECRET_TOKEN: ${{ secrets.MAPBOX_SECRET_TOKEN }}
+        run: |
+          CADENCE="${{ github.event.inputs.cadence }}"
+          SLUGS="${{ github.event.inputs.slugs }}"
+
+          ARGS=""
+          if [ "$CADENCE" != "all" ] && [ -n "$CADENCE" ]; then
+            ARGS="$ARGS --cadence $CADENCE"
+          fi
+          if [ -n "$SLUGS" ]; then
+            ARGS="$ARGS --slugs $SLUGS"
+          fi
+
+          npx tsx scripts/ingest.ts $ARGS
