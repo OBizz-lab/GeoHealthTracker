@@ -105,14 +105,13 @@ function colorForCount(n: number): string {
   return CLUSTER_LOW;
 }
 
-// Opacity steps — each band is just barely visible at the floor and reaches the
-// design-doc target by the ceiling. Keeps the sparsest country readable while
-// the worst countries clearly dominate.
+// Opacity steps — calibrated so each band is unmistakably visible against
+// the dark map background while preserving rank order.
 function opacityForCount(n: number): number {
-  if (n >= 50) return 0.36;
-  if (n >= 10) return 0.28;
-  if (n >=  3) return 0.22;
-  return 0.16;
+  if (n >= 50) return 0.55;
+  if (n >= 10) return 0.45;
+  if (n >=  3) return 0.35;
+  return 0.28;
 }
 
 function buildCountryExpressions(stats: Map<string, CountryStats>) {
@@ -194,17 +193,28 @@ export function MapView({ reports, mapboxToken, showCountryHeatmap }: MapViewPro
         type: "vector",
         url:  "mapbox://mapbox.country-boundaries-v1",
       });
+      // Worldview filter — "all" (undisputed) plus "US" (disputed-region
+      // version matching a Western worldview). Using `any` rather than
+      // `in` because the latter silently produces empty results in some
+      // Mapbox GL JS versions when fed a literal-wrapped array.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const WORLDVIEW_FILTER: any = [
+        "any",
+        ["==", ["get", "worldview"], "all"],
+        ["==", ["get", "worldview"], "US"],
+      ];
+
       map.addLayer({
         id: "country-fill", type: "fill",
         source: "country-boundaries", "source-layer": "country_boundaries",
-        filter: ["in", ["get", "worldview"], ["literal", ["all", "US"]]],
-        paint: { "fill-color": "#000000", "fill-opacity": 0 },
+        filter: WORLDVIEW_FILTER,
+        paint:  { "fill-color": "#000000", "fill-opacity": 0 },
       }, firstSymbol);
       map.addLayer({
         id: "country-outline", type: "line",
         source: "country-boundaries", "source-layer": "country_boundaries",
-        filter: ["in", ["get", "worldview"], ["literal", ["all", "US"]]],
-        paint: { "line-color": "#000000", "line-width": 1.2, "line-opacity": 0 },
+        filter: WORLDVIEW_FILTER,
+        paint:  { "line-color": "#000000", "line-width": 1.2, "line-opacity": 0 },
       }, firstSymbol);
 
       // Cases source with clustering ────────────────────────────────────────
