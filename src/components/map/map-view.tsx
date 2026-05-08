@@ -35,6 +35,16 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
   }, [reports]);
 
   useEffect(() => {
+    console.log("[MapView] init effect", {
+      hasToken: !!mapboxToken,
+      tokenPrefix: mapboxToken?.slice(0, 10),
+      hasContainer: !!containerRef.current,
+      hasMap: !!mapRef.current,
+      containerSize: containerRef.current
+        ? { w: containerRef.current.offsetWidth, h: containerRef.current.offsetHeight }
+        : null,
+    });
+
     if (!mapboxToken) return;
     if (!containerRef.current) return;
     if (mapRef.current) return;
@@ -55,7 +65,16 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
       "bottom-right",
     );
 
-    map.on("load", () => setMapReady(true));
+    map.on("load", () => {
+      console.log("[MapView] map loaded");
+      setMapReady(true);
+    });
+    map.on("error", (e) => {
+      console.error("[MapView] map error", e.error?.message ?? e);
+    });
+    map.on("styledata", () => {
+      console.log("[MapView] style data received");
+    });
     mapRef.current = map;
 
     return () => {
@@ -68,6 +87,7 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current;
+    console.log("[MapView] markers effect", { hasMap: !!map, mapReady, reportCount: reports.length });
     if (!map || !mapReady) return;
 
     markersRef.current.forEach((m) => m.remove());
