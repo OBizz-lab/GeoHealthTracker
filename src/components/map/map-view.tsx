@@ -35,16 +35,6 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
   }, [reports]);
 
   useEffect(() => {
-    console.log("[MapView] init effect", {
-      hasToken: !!mapboxToken,
-      tokenPrefix: mapboxToken?.slice(0, 10),
-      hasContainer: !!containerRef.current,
-      hasMap: !!mapRef.current,
-      containerSize: containerRef.current
-        ? { w: containerRef.current.offsetWidth, h: containerRef.current.offsetHeight }
-        : null,
-    });
-
     if (!mapboxToken) return;
     if (!containerRef.current) return;
     if (mapRef.current) return;
@@ -56,6 +46,7 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
       style: MAP_STYLE,
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
+      projection: "mercator",
       attributionControl: false,
     });
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
@@ -65,16 +56,7 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
       "bottom-right",
     );
 
-    map.on("load", () => {
-      console.log("[MapView] map loaded");
-      setMapReady(true);
-    });
-    map.on("error", (e) => {
-      console.error("[MapView] map error", e.error?.message ?? e);
-    });
-    map.on("styledata", () => {
-      console.log("[MapView] style data received");
-    });
+    map.on("load", () => setMapReady(true));
     mapRef.current = map;
 
     return () => {
@@ -87,7 +69,6 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current;
-    console.log("[MapView] markers effect", { hasMap: !!map, mapReady, reportCount: reports.length });
     if (!map || !mapReady) return;
 
     markersRef.current.forEach((m) => m.remove());
@@ -124,10 +105,8 @@ export function MapView({ reports, mapboxToken }: MapViewProps) {
     const bounds = new mapboxgl.LngLatBounds();
     reports.forEach((r) => bounds.extend([r.lng, r.lat]));
     if (!bounds.isEmpty()) {
-      const cw = containerRef.current?.offsetWidth ?? 800;
-      const rightPad = cw > 640 ? 380 : 40;
       map.fitBounds(bounds, {
-        padding: { top: 40, bottom: 40, left: 40, right: rightPad },
+        padding: 40,
         duration: 0,
         maxZoom: 4,
       });
