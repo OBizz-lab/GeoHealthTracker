@@ -17,7 +17,7 @@ interface MapViewProps {
   mapboxToken: string | undefined;
 }
 
-const MAP_STYLE = "mapbox://styles/ob-hanta-xp/cmowa0o5b006y01sxfvul3ly2";
+const MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
 const DEFAULT_CENTER: [number, number] = [10, 20];
 const DEFAULT_ZOOM = 1.6;
 
