@@ -251,14 +251,17 @@ export function AdminQueue() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
+      {/* Header: title stacks above action buttons on mobile, sits inline on
+          sm+. Buttons themselves wrap onto multiple rows when constrained
+          rather than overflowing the viewport. */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Moderation Queue</h1>
           <p className="mt-1 text-sm text-zinc-400">
             {pending} pending · {cases.length - pending} published
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/admin/grants"
             className="relative rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"

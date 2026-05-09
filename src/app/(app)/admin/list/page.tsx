@@ -115,96 +115,159 @@ export default function AdminListPage() {
           No admins yet.
         </div>
       ) : (
-        <div
-          style={{
-            background:   "var(--bg-surface)",
-            border:       "1px solid var(--border-default)",
-            borderRadius: 8,
-            overflow:     "hidden",
-          }}
-        >
-          {/* Header row */}
+        <>
+          {/* ── Mobile: stacked card per admin ───────────────────────── */}
+          <ul className="flex flex-col md:hidden" style={{ gap: 10 }}>
+            {rows.map((r) => {
+              const grantedDate = (() => {
+                try { return new Date(r.granted_at).toLocaleDateString(); }
+                catch { return r.granted_at; }
+              })();
+              return (
+                <li
+                  key={r.user_id}
+                  style={{
+                    background:   "var(--bg-surface)",
+                    border:       "1px solid var(--border-default)",
+                    borderRadius: 10,
+                    padding:      14,
+                  }}
+                >
+                  <div className="flex items-center" style={{ gap: 10, minWidth: 0 }}>
+                    <ShieldCheck
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: "var(--status-recovered)" }}
+                    />
+                    <div className="flex flex-col" style={{ minWidth: 0, flex: 1 }}>
+                      <span
+                        style={{
+                          fontSize:    14,
+                          fontWeight:  500,
+                          color:       "var(--text-primary)",
+                          overflow:    "hidden",
+                          textOverflow:"ellipsis",
+                          whiteSpace:  "nowrap",
+                        }}
+                      >
+                        {r.username ?? r.user_id.slice(0, 8) + "…"}
+                      </span>
+                      <span
+                        className="t-mono"
+                        style={{ fontSize: 11, color: "var(--text-tertiary)" }}
+                      >
+                        Granted {grantedDate}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className="grid"
+                    style={{
+                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gap:        8,
+                      marginTop:  12,
+                    }}
+                  >
+                    <Chip label="Accepted" value={r.accepted_count} color="var(--status-recovered)" />
+                    <Chip label="Pending"  value={r.pending_count}  color="var(--accent)" />
+                    <Chip label="Rejected" value={r.rejected_count} color="var(--status-fatal)" />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+
+          {/* ── Desktop: table ──────────────────────────────────────── */}
           <div
-            className="grid items-center"
+            className="hidden md:block"
             style={{
-              gridTemplateColumns: "minmax(0, 2fr) 110px 80px 80px 80px",
-              padding:        "12px 16px",
-              background:     "var(--bg-overlay)",
-              borderBottom:   "1px solid var(--border-subtle)",
-              gap:            12,
+              background:   "var(--bg-surface)",
+              border:       "1px solid var(--border-default)",
+              borderRadius: 8,
+              overflow:     "hidden",
             }}
           >
-            {["Admin", "Granted", "Accepted", "Pending", "Rejected"].map((h, i) => (
-              <div
-                key={h}
-                className="t-cap t-up"
-                style={{
-                  color:     "var(--text-secondary)",
-                  textAlign: i >= 2 ? "right" : "left",
-                }}
-              >
-                {h}
-              </div>
-            ))}
-          </div>
-
-          {rows.map((r) => {
-            const grantedDate = (() => {
-              try { return new Date(r.granted_at).toLocaleDateString(); }
-              catch { return r.granted_at; }
-            })();
-            return (
-              <div
-                key={r.user_id}
-                className="grid items-center"
-                style={{
-                  gridTemplateColumns: "minmax(0, 2fr) 110px 80px 80px 80px",
-                  padding:      "14px 16px",
-                  borderBottom: "1px solid var(--border-subtle)",
-                  gap:          12,
-                }}
-              >
-                <div className="flex items-center" style={{ gap: 10, minWidth: 0 }}>
-                  <ShieldCheck
-                    className="h-4 w-4 shrink-0"
-                    style={{ color: "var(--status-recovered)" }}
-                  />
-                  <div className="flex flex-col" style={{ minWidth: 0 }}>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: "var(--text-primary)",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {r.username ?? r.user_id.slice(0, 8) + "…"}
-                    </span>
-                    {!r.username && (
-                      <span
-                        className="t-cap"
-                        style={{ color: "var(--text-tertiary)", fontSize: 10 }}
-                      >
-                        No signup record
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <span
-                  className="t-mono"
-                  style={{ fontSize: 11, color: "var(--text-secondary)" }}
+            <div
+              className="grid items-center"
+              style={{
+                gridTemplateColumns: "minmax(0, 2fr) 110px 80px 80px 80px",
+                padding:        "12px 16px",
+                background:     "var(--bg-overlay)",
+                borderBottom:   "1px solid var(--border-subtle)",
+                gap:            12,
+              }}
+            >
+              {["Admin", "Granted", "Accepted", "Pending", "Rejected"].map((h, i) => (
+                <div
+                  key={h}
+                  className="t-cap t-up"
+                  style={{
+                    color:     "var(--text-secondary)",
+                    textAlign: i >= 2 ? "right" : "left",
+                  }}
                 >
-                  {grantedDate}
-                </span>
-                <CountCell value={r.accepted_count} color="var(--status-recovered)" />
-                <CountCell value={r.pending_count}  color="var(--accent)" />
-                <CountCell value={r.rejected_count} color="var(--status-fatal)" />
-              </div>
-            );
-          })}
-        </div>
+                  {h}
+                </div>
+              ))}
+            </div>
+
+            {rows.map((r) => {
+              const grantedDate = (() => {
+                try { return new Date(r.granted_at).toLocaleDateString(); }
+                catch { return r.granted_at; }
+              })();
+              return (
+                <div
+                  key={r.user_id}
+                  className="grid items-center"
+                  style={{
+                    gridTemplateColumns: "minmax(0, 2fr) 110px 80px 80px 80px",
+                    padding:      "14px 16px",
+                    borderBottom: "1px solid var(--border-subtle)",
+                    gap:          12,
+                  }}
+                >
+                  <div className="flex items-center" style={{ gap: 10, minWidth: 0 }}>
+                    <ShieldCheck
+                      className="h-4 w-4 shrink-0"
+                      style={{ color: "var(--status-recovered)" }}
+                    />
+                    <div className="flex flex-col" style={{ minWidth: 0 }}>
+                      <span
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: "var(--text-primary)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {r.username ?? r.user_id.slice(0, 8) + "…"}
+                      </span>
+                      {!r.username && (
+                        <span
+                          className="t-cap"
+                          style={{ color: "var(--text-tertiary)", fontSize: 10 }}
+                        >
+                          No signup record
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className="t-mono"
+                    style={{ fontSize: 11, color: "var(--text-secondary)" }}
+                  >
+                    {grantedDate}
+                  </span>
+                  <CountCell value={r.accepted_count} color="var(--status-recovered)" />
+                  <CountCell value={r.pending_count}  color="var(--accent)" />
+                  <CountCell value={r.rejected_count} color="var(--status-fatal)" />
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </main>
   );
@@ -224,5 +287,39 @@ function CountCell({ value, color }: { value: number; color: string }) {
     >
       {value}
     </span>
+  );
+}
+
+function Chip({ label, value, color }: { label: string; value: number; color: string }) {
+  const dim = value === 0;
+  return (
+    <div
+      style={{
+        background:   "var(--bg-base)",
+        border:       "1px solid var(--border-subtle)",
+        borderRadius: 8,
+        padding:      "8px 10px",
+        textAlign:    "center",
+      }}
+    >
+      <div
+        className="num"
+        style={{
+          fontSize:   18,
+          fontWeight: 600,
+          color:      dim ? "var(--text-tertiary)" : color,
+          fontVariantNumeric: "tabular-nums",
+          lineHeight: "22px",
+        }}
+      >
+        {value}
+      </div>
+      <div
+        className="t-cap t-up"
+        style={{ color: "var(--text-tertiary)", fontSize: 10, marginTop: 2 }}
+      >
+        {label}
+      </div>
+    </div>
   );
 }
