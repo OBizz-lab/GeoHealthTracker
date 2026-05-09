@@ -19,6 +19,7 @@ export const nav = {
     { label: "Map",      href: "/map"      },
     { label: "Cases",    href: "/cases"    },
     { label: "Symptoms", href: "/symptoms" },
+    { label: "Blog",     href: "/blog"     },
     { label: "Sources",  href: "/sources"  },
     { label: "About",    href: "/about"    },
     { label: "Support",  href: "/support"  },

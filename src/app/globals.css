@@ -289,3 +289,131 @@
   .scroll-zinc::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
   .scroll-zinc::-webkit-scrollbar-track { background: transparent; }
 }
+
+/* ===========================================================================
+   Blog post prose — applied to the marked()-rendered HTML body. Plain
+   typographic styling that picks up the site's design tokens. Scoped under
+   .blog-prose so it doesn't leak into the rest of the app.
+   =========================================================================== */
+.blog-prose {
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 26px;
+}
+.blog-prose p {
+  margin: 0 0 18px;
+  color: var(--text-secondary);
+}
+.blog-prose h1 {
+  /* The page header already renders the post title; suppress the body H1
+     from the markdown to avoid a duplicate. */
+  display: none;
+}
+.blog-prose h2 {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 30px;
+  color: var(--text-primary);
+  margin: 32px 0 12px;
+}
+.blog-prose h3 {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 26px;
+  color: var(--text-primary);
+  margin: 24px 0 8px;
+}
+.blog-prose h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 20px 0 6px;
+}
+.blog-prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.blog-prose a:hover {
+  text-decoration-thickness: 2px;
+}
+.blog-prose strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.blog-prose em {
+  font-style: italic;
+}
+.blog-prose ul,
+.blog-prose ol {
+  margin: 0 0 18px;
+  padding-left: 24px;
+  color: var(--text-secondary);
+}
+.blog-prose ul { list-style: disc; }
+.blog-prose ol { list-style: decimal; }
+.blog-prose li {
+  margin: 6px 0;
+}
+.blog-prose li > ul,
+.blog-prose li > ol {
+  margin: 6px 0;
+}
+.blog-prose blockquote {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-surface);
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 22px;
+}
+.blog-prose code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+.blog-prose pre {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+.blog-prose pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 22px;
+}
+.blog-prose hr {
+  margin: 28px 0;
+  border: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.blog-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 18px;
+  font-size: 14px;
+}
+.blog-prose th,
+.blog-prose td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+.blog-prose th {
+  color: var(--text-primary);
+  font-weight: 600;
+  background: var(--bg-overlay);
+}
