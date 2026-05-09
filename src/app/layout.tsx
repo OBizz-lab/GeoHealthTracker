@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 import { brand } from "@/lib/copy";
@@ -41,6 +42,7 @@ export default function RootLayout({
         <SiteHeader />
         <div className="flex-1 flex flex-col min-h-0">{children}</div>
         <DisclaimerModal />
+        <Analytics />
       </body>
     </html>
   );
