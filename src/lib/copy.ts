@@ -9,7 +9,9 @@ export const brand = {
   shortDescription:
     "Confirmed and suspected hantavirus cases from CDC, WHO, ECDC, PAHO, ProMED, and state health departments — on one map, updated every fifteen minutes.",
   domain: "hantavirustrack.org",
-  email: "omar@hantavirustrack.org",
+  /** Project's only contact channel. We deliberately don't publish an email. */
+  contactUrl:   "https://www.reddit.com/user/Ob344/",
+  contactLabel: "u/Ob344 on Reddit",
 };
 
 export const nav = {

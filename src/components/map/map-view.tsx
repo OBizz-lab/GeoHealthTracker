@@ -45,11 +45,13 @@ const STATUS_LABEL: Record<ReportStatus, string> = {
 // ---------------------------------------------------------------------------
 function toCasesGeoJSON(reports: Report[]) {
   // Only confirmed cases go into the case-marker source. Mentions are
-  // aggregated separately into a per-country centroid layer.
+  // aggregated separately into a per-country centroid layer. Non-geocoded
+  // confirmed cases are skipped here (no point geometry to render) but
+  // they DO still feed the country choropleth — see aggregateByCountry.
   return {
     type: "FeatureCollection" as const,
     features: reports
-      .filter((r) => r.kind === "confirmed")
+      .filter((r) => r.kind === "confirmed" && r.lat != null && r.lng != null)
       .map((r) => ({
         type: "Feature" as const,
         properties: {
@@ -58,7 +60,10 @@ function toCasesGeoJSON(reports: Report[]) {
           color:      STATUS_COLOR[r.status] ?? "#5BC0EB",
           case_count: r.case_count,
         },
-        geometry: { type: "Point" as const, coordinates: [r.lng, r.lat] as [number, number] },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [r.lng as number, r.lat as number] as [number, number],
+        },
       })),
   };
 }
@@ -167,6 +172,7 @@ export interface CountryStats {
 
 export function aggregateByCountry(reports: Report[]): Map<string, CountryStats> {
   // CONFIRMED cases only — news mentions never paint the country fill.
+  // Non-geocoded confirmed cases are included so totals stay accurate.
   const out = new Map<string, CountryStats>();
   for (const r of reports) {
     if (r.kind !== "confirmed") continue;
@@ -183,6 +189,40 @@ export function aggregateByCountry(reports: Report[]): Map<string, CountryStats>
       prev.totalCases  += r.case_count;
       prev.reportCount += 1;
       if (STATUS_RANK[r.status] > STATUS_RANK[prev.topStatus]) prev.topStatus = r.status;
+    }
+  }
+  return out;
+}
+
+// =============================================================================
+// Per-country case list — backs the country-cases drawer. Indexed by ISO-2
+// so a click on the country choropleth can pull every confirmed case for
+// that country and pass them to the drawer.
+// =============================================================================
+export interface CountryCases {
+  iso:        string;
+  totalCases: number;
+  fatalities: number;
+  reports:    Report[];
+}
+
+export function aggregateCountryCases(reports: Report[]): Map<string, CountryCases> {
+  const out = new Map<string, CountryCases>();
+  for (const r of reports) {
+    if (r.kind !== "confirmed") continue;
+    if (!r.country || r.country === "ZZ") continue;
+    const prev = out.get(r.country);
+    if (!prev) {
+      out.set(r.country, {
+        iso:        r.country,
+        totalCases: r.case_count,
+        fatalities: r.fatality_count,
+        reports:    [r],
+      });
+    } else {
+      prev.totalCases += r.case_count;
+      prev.fatalities += r.fatality_count;
+      prev.reports.push(r);
     }
   }
   return out;
@@ -232,16 +272,19 @@ function buildCountryExpressions(stats: Map<string, CountryStats>) {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+/** Tells the shell which accordion section to expand on open. */
+export type CountrySectionId = "cases" | "mentions" | "spread";
+
 interface MapViewProps {
   reports:            Report[];
   mapboxToken:        string | undefined;
   showCountryHeatmap: boolean;
   /** Called when the user clicks a confirmed-case marker. Shell owns drawer state. */
   onSelectConfirmed?: (report: Report) => void;
-  /** Called when the user clicks a per-country news-mention marker. */
-  onSelectMentions?:  (country: CountryMentions) => void;
-  /** Called when the user clicks a per-country exposure-follow-up marker. */
-  onSelectExposure?:  (country: CountryExposure) => void;
+  /** Unified country-click handler. Country fill, mention marker, and
+   *  spread (exposure) marker all funnel here — the `defaultSection`
+   *  hint determines which accordion section opens first. */
+  onSelectCountry?:   (iso: string, defaultSection: CountrySectionId) => void;
 }
 
 export function MapView({
@@ -249,8 +292,7 @@ export function MapView({
   mapboxToken,
   showCountryHeatmap,
   onSelectConfirmed,
-  onSelectMentions,
-  onSelectExposure,
+  onSelectCountry,
 }: MapViewProps) {
   const containerRef        = useRef<HTMLDivElement | null>(null);
   const mapRef              = useRef<mapboxgl.Map | null>(null);
@@ -258,15 +300,14 @@ export function MapView({
   const countryStatsRef     = useRef<Map<string, CountryStats>>(new Map());
   const countryMentionsRef  = useRef<Map<string, CountryMentions>>(new Map());
   const countryExposureRef  = useRef<Map<string, CountryExposure>>(new Map());
+  const countryCasesRef     = useRef<Map<string, CountryCases>>(new Map());
   const hoverPopupRef       = useRef<mapboxgl.Popup | null>(null);
   // Refs for callbacks so the once-installed click handlers always see the
   // current shell-owned setters (avoids stale-closure bugs on re-render).
   const onSelectConfirmedRef = useRef(onSelectConfirmed);
-  const onSelectMentionsRef  = useRef(onSelectMentions);
-  const onSelectExposureRef  = useRef(onSelectExposure);
+  const onSelectCountryRef   = useRef(onSelectCountry);
   useEffect(() => { onSelectConfirmedRef.current = onSelectConfirmed; }, [onSelectConfirmed]);
-  useEffect(() => { onSelectMentionsRef.current  = onSelectMentions;  }, [onSelectMentions]);
-  useEffect(() => { onSelectExposureRef.current  = onSelectExposure;  }, [onSelectExposure]);
+  useEffect(() => { onSelectCountryRef.current   = onSelectCountry;   }, [onSelectCountry]);
   const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
@@ -277,6 +318,7 @@ export function MapView({
 
   const casesGeoJSON       = useMemo(() => toCasesGeoJSON(reports), [reports]);
   const countryStats       = useMemo(() => aggregateByCountry(reports), [reports]);
+  const countryCases       = useMemo(() => aggregateCountryCases(reports), [reports]);
   const countryMentions    = useMemo(() => aggregateMentionsByCountry(reports), [reports]);
   const countryExposure    = useMemo(() => aggregateExposureByCountry(reports), [reports]);
   const mentionsGeoJSON    = useMemo(() => toMentionsGeoJSON(countryMentions), [countryMentions]);
@@ -285,6 +327,7 @@ export function MapView({
 
   // Keep refs fresh for closure-based event handlers
   useEffect(() => { countryStatsRef.current    = countryStats;    }, [countryStats]);
+  useEffect(() => { countryCasesRef.current    = countryCases;    }, [countryCases]);
   useEffect(() => { countryMentionsRef.current = countryMentions; }, [countryMentions]);
   useEffect(() => { countryExposureRef.current = countryExposure; }, [countryExposure]);
 
@@ -515,7 +558,7 @@ export function MapView({
         const id = e.features?.[0]?.properties?.id as string | undefined;
         if (!id) return;
         const r = reportByIdRef.current.get(id);
-        if (!r) return;
+        if (!r || r.lat == null || r.lng == null) return;
         onSelectConfirmedRef.current?.(r);
         // Nudge map ~120px left so the marker isn't behind the drawer (DESIGN §5.5)
         const projected = map.project([r.lng, r.lat]);
@@ -526,13 +569,13 @@ export function MapView({
         });
       });
 
-      // ── Mention-marker click → open mentions drawer ──────────────────────
+      // ── Mention-marker click → unified country drawer (Mentions tab) ────
       map.on("click", "mention-marker", (e) => {
         const iso = e.features?.[0]?.properties?.iso as string | undefined;
         if (!iso) return;
         const country = countryMentionsRef.current.get(iso);
         if (!country) return;
-        onSelectMentionsRef.current?.(country);
+        onSelectCountryRef.current?.(iso, "mentions");
         // Same drawer-nudge treatment as confirmed markers
         const projected = map.project(country.centroid);
         map.easeTo({
@@ -542,13 +585,13 @@ export function MapView({
         });
       });
 
-      // ── Exposure-marker click → open exposure drawer ─────────────────────
+      // ── Exposure-marker click → unified country drawer (Spread tab) ─────
       map.on("click", "exposure-marker", (e) => {
         const iso = e.features?.[0]?.properties?.iso as string | undefined;
         if (!iso) return;
         const country = countryExposureRef.current.get(iso);
         if (!country) return;
-        onSelectExposureRef.current?.(country);
+        onSelectCountryRef.current?.(iso, "spread");
         const projected = map.project(country.centroid);
         map.easeTo({
           center: map.unproject([projected.x + 60, projected.y]),
@@ -609,6 +652,20 @@ export function MapView({
       });
       map.on("mouseleave", "country-fill", () => {
         map.getCanvas().style.cursor = "";
+        popup.remove();
+      });
+
+      // Country-fill click → unified country drawer (Cases tab). We skip
+      // if there are no cases — clicking an empty country shouldn't open
+      // an empty drawer (mention-only countries open via the mention
+      // marker that's drawn at the same centroid).
+      map.on("click", "country-fill", (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const iso = (f.properties?.iso_3166_1 as string) ?? "";
+        if (!iso) return;
+        if (!countryCasesRef.current.has(iso)) return;
+        onSelectCountryRef.current?.(iso, "cases");
         popup.remove();
       });
 

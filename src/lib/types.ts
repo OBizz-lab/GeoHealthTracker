@@ -15,8 +15,10 @@ export type ReportKind = "confirmed" | "mention" | "exposed";
 export interface Report {
   id: string;
   kind: ReportKind;
-  lat: number;
-  lng: number;
+  /** null when the case has no coordinates yet (still counts toward
+   *  per-country totals; just doesn't render as a map marker). */
+  lat: number | null;
+  lng: number | null;
   location_name: string;
   country: string;
   state_province?: string;

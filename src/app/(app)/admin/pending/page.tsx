@@ -3,17 +3,43 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Clock, CheckCircle2, XCircle, Mail } from "lucide-react";
+import { Clock, CheckCircle2, XCircle } from "lucide-react";
 
-import { getSupabaseClientStrict } from "@/lib/supabase/client";
+import { emailToUsername } from "@/lib/auth/username";
+import {
+  readStoredSession,
+  fetchIsApprovedAdmin,
+  fetchPendingSignup,
+  insertAdminSignup,
+  notifyAuthChange,
+  type StoredSession,
+} from "@/lib/auth/session";
 
 // =============================================================================
 // /admin/pending — what a newly-signed-up user sees while waiting for approval.
 // Polls admin_signups every 10s for status changes; if approved, the page
-// nudges the user to /cases.
+// nudges the user to /cases. All Supabase access is via raw fetch helpers
+// to bypass the browser SDK's navigator.locks issues.
 // =============================================================================
 
-type Status = "pending" | "approved" | "rejected" | "unknown" | "needs_email_confirm" | "needs_statement";
+type Status = "pending" | "approved" | "rejected" | "unknown" | "needs_statement";
+
+function usernameForSession(session: StoredSession): string {
+  // Decode the JWT for the email/user_metadata.username field.
+  try {
+    const [, payloadB64] = session.access_token.split(".");
+    if (!payloadB64) return "";
+    const pad = "=".repeat((4 - (payloadB64.length % 4)) % 4);
+    const claims = JSON.parse(
+      atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/") + pad),
+    ) as { email?: string; user_metadata?: { username?: string } };
+    if (claims.user_metadata?.username) return claims.user_metadata.username;
+    if (claims.email) return emailToUsername(claims.email);
+    return "";
+  } catch {
+    return "";
+  }
+}
 
 export default function AdminPendingPage() {
   const router = useRouter();
@@ -24,75 +50,59 @@ export default function AdminPendingPage() {
   const [recoveryError, setRecoveryError] = useState("");
 
   useEffect(() => {
-    const supabase = getSupabaseClientStrict();
     let cancelled = false;
     let interval: ReturnType<typeof setInterval> | null = null;
 
     async function refresh() {
-      const { data: sess } = await supabase.auth.getSession();
-      // No session → check if we're in the "just-confirmed-email" flow.
-      if (!sess.session) {
-        if (typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          if (url.searchParams.get("confirm-email") === "1") {
-            if (!cancelled) setStatus("needs_email_confirm");
-            return;
-          }
-        }
+      const session = readStoredSession();
+      if (!session) {
         if (!cancelled) router.replace("/admin/sign-in");
         return;
       }
 
-      // Approved admin → /cases
-      const { data: grant } = await supabase
-        .from("admin_grants")
-        .select("user_id")
-        .eq("user_id", sess.session.user.id)
-        .is("revoked_at", null)
-        .maybeSingle();
-      if (grant && !cancelled) {
+      // Approved admin → /cases. Fire the auth-change event first so the
+      // shared SiteHeader (already mounted from when we were a pending
+      // user) re-evaluates isAdmin and shows the admin nav links instead
+      // of the public-only state.
+      const isAdmin = await fetchIsApprovedAdmin(session);
+      if (cancelled) return;
+      if (isAdmin) {
+        notifyAuthChange();
         router.replace("/cases");
         return;
       }
 
-      const { data: signup } = await supabase
-        .from("admin_signups")
-        .select("status, reviewer_note")
-        .eq("user_id", sess.session.user.id)
-        .maybeSingle();
+      const signup = await fetchPendingSignup(session);
+      if (cancelled) return;
 
       if (signup) {
-        if (!cancelled) {
-          setStatus((signup.status as Status) ?? "unknown");
-          setReviewerNote((signup.reviewer_note as string | null) ?? null);
-        }
+        setStatus((signup.status as Status) ?? "unknown");
+        setReviewerNote(signup.reviewer_note ?? null);
         return;
       }
 
-      // Signed in but no admin_signups row — recover from localStorage if we
-      // can; otherwise prompt the user for their contribution statement.
+      // Signed in but no admin_signups row — recover from localStorage if
+      // we can; otherwise prompt the user for their contribution statement.
+      const username = usernameForSession(session);
       let stored: { contribution?: string } | null = null;
       try {
         const raw = window.localStorage.getItem("pendingContribution");
         if (raw) stored = JSON.parse(raw) as { contribution?: string };
       } catch { /* */ }
 
-      if (stored?.contribution) {
-        const { error: insErr } = await supabase.from("admin_signups").insert({
-          user_id: sess.session.user.id,
-          username: sess.session.user.email ?? "",
-          contribution_statement: stored.contribution,
-        });
+      if (stored?.contribution && username) {
+        const insErr = await insertAdminSignup(session, username, stored.contribution);
+        if (cancelled) return;
         if (!insErr) {
           try { window.localStorage.removeItem("pendingContribution"); } catch { /* */ }
-          if (!cancelled) setStatus("pending");
-        } else if (!cancelled) {
+          setStatus("pending");
+        } else {
           setStatus("needs_statement");
         }
         return;
       }
 
-      if (!cancelled) setStatus("needs_statement");
+      setStatus("needs_statement");
     }
 
     refresh();
@@ -111,16 +121,17 @@ export default function AdminPendingPage() {
       return;
     }
     setRecovering(true);
-    const supabase = getSupabaseClientStrict();
-    const { data: sess } = await supabase.auth.getSession();
-    if (!sess.session) { router.replace("/admin/sign-in"); return; }
-    const { error: insErr } = await supabase.from("admin_signups").insert({
-      user_id: sess.session.user.id,
-      username: sess.session.user.email ?? "",
-      contribution_statement: recoveryStatement.trim(),
-    });
+    const session = readStoredSession();
+    if (!session) { router.replace("/admin/sign-in"); return; }
+    const username = usernameForSession(session);
+    if (!username) {
+      setRecovering(false);
+      setRecoveryError("Could not determine your username. Sign out and sign up again.");
+      return;
+    }
+    const insErr = await insertAdminSignup(session, username, recoveryStatement.trim());
     setRecovering(false);
-    if (insErr) { setRecoveryError(insErr.message); return; }
+    if (insErr) { setRecoveryError(insErr); return; }
     setStatus("pending");
   }
 
@@ -221,16 +232,6 @@ function Header({ status }: { status: Status }) {
       </div>
     );
   }
-  if (status === "needs_email_confirm") {
-    return (
-      <div className="flex items-center" style={{ gap: 10, marginBottom: 8 }}>
-        <Mail className="h-5 w-5" style={{ color: "var(--accent)" }} />
-        <h1 className="t-h2" style={{ color: "var(--text-primary)" }}>
-          Check your email
-        </h1>
-      </div>
-    );
-  }
   if (status === "needs_statement") {
     return (
       <div className="flex items-center" style={{ gap: 10, marginBottom: 8 }}>
@@ -264,7 +265,7 @@ function Body({ status, reviewerNote }: { status: Status; reviewerNote: string |
       <>
         <p style={{ fontSize: 14, lineHeight: "22px", color: "var(--text-secondary)", marginBottom: 12 }}>
           Your application was not approved. If you believe this is in error,
-          contact <a href="mailto:bafagihomar260@gmail.com" style={{ color: "var(--accent)" }}>bafagihomar260@gmail.com</a>.
+          contact the project owner.
         </p>
         {reviewerNote && (
           <div
@@ -282,15 +283,6 @@ function Body({ status, reviewerNote }: { status: Status; reviewerNote: string |
           </div>
         )}
       </>
-    );
-  }
-  if (status === "needs_email_confirm") {
-    return (
-      <p style={{ fontSize: 14, lineHeight: "22px", color: "var(--text-secondary)" }}>
-        Click the confirmation link in the email we just sent you, then come
-        back to <Link href="/admin/sign-in" style={{ color: "var(--accent)" }}>sign in</Link>.
-        After signing in your application will be queued for review.
-      </p>
     );
   }
   if (status === "needs_statement") {

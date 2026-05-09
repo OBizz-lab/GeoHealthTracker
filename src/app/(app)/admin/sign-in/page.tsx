@@ -5,22 +5,30 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { getSupabaseClientStrict } from "@/lib/supabase/client";
+import { normalizeUsername, usernameToEmail } from "@/lib/auth/username";
+import { readStoredSession, fetchIsApprovedAdmin, notifyAuthChange } from "@/lib/auth/session";
 
 export default function AdminSignInPage() {
   const router = useRouter();
-  const [email, setEmail]       = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
   const [loading, setLoading]   = useState(false);
   const [checking, setChecking] = useState(true);
 
-  // If already signed in, bounce straight to /cases.
+  // "Already signed in?" check — read localStorage directly instead of
+  // calling supabase.auth.getSession(), which goes through a navigator.locks
+  // mutex that can stay poisoned and never resolve. The IIFE creates an
+  // async boundary so React 19's set-state-in-effect rule is happy.
   useEffect(() => {
-    const supabase = getSupabaseClientStrict();
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/cases");
+    let cancelled = false;
+    (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      if (readStoredSession()) router.replace("/cases");
       else setChecking(false);
-    });
+    })();
+    return () => { cancelled = true; };
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -28,28 +36,35 @@ export default function AdminSignInPage() {
     setLoading(true);
     setError("");
     const supabase = getSupabaseClientStrict();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    // Username → synthetic email. (If a value containing "@" is pasted in we
+    // accept it as-is, so legacy email-based accounts keep working until
+    // they're wiped.)
+    const trimmed = username.trim();
+    const email = trimmed.includes("@") ? trimmed.toLowerCase() : usernameToEmail(normalizeUsername(trimmed));
+
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      setError(error.message);
+      const friendly = /invalid login credentials/i.test(error.message)
+        ? "Username or password is incorrect."
+        : error.message;
+      setError(friendly);
       setLoading(false);
       return;
     }
-    // If the user is approved → /cases. Otherwise → /admin/pending.
-    if (data.session) {
-      const { data: grant } = await supabase
-        .from("admin_grants")
-        .select("user_id")
-        .eq("user_id", data.session.user.id)
-        .is("revoked_at", null)
-        .maybeSingle();
-      if (grant) {
-        router.replace("/cases");
-      } else {
-        router.replace("/admin/pending");
-      }
-    } else {
-      router.replace("/cases");
+
+    // signInWithPassword writes the session to localStorage synchronously
+    // before resolving. Read it back via our lock-free helper instead of
+    // calling getSession(), then check admin status with a raw fetch.
+    const session = readStoredSession();
+    if (!session) {
+      setError("Sign-in succeeded but no session was stored. Try again.");
+      setLoading(false);
+      return;
     }
+    const isAdmin = await fetchIsApprovedAdmin(session);
+    notifyAuthChange();
+    router.replace(isAdmin ? "/cases" : "/admin/pending");
   }
 
   if (checking) return null;
@@ -81,15 +96,17 @@ export default function AdminSignInPage() {
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ gap: 14 }}>
           <label className="flex flex-col" style={{ gap: 4 }}>
             <span className="t-cap t-up" style={{ color: "var(--text-tertiary)" }}>
-              Email
+              Username
             </span>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
               autoFocus
+              spellCheck={false}
+              autoCapitalize="none"
               style={{
                 fontSize:     13,
                 padding:      "10px 12px",

@@ -5,122 +5,92 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Check, X, ShieldCheck } from "lucide-react";
 
-import { getSupabaseClientStrict } from "@/lib/supabase/client";
-
-interface PendingSignup {
-  id:                     string;
-  user_id:                string;
-  username:               string;
-  contribution_statement: string;
-  status:                 "pending" | "approved" | "rejected";
-  reviewer_note:          string | null;
-  created_at:             string;
-}
+import {
+  readStoredSession,
+  fetchIsApprovedAdmin,
+  fetchAdminSignups,
+  insertAdminGrant,
+  updateAdminSignupStatus,
+  type StoredSession,
+  type AdminSignupRow,
+} from "@/lib/auth/session";
 
 export default function AdminGrantsPage() {
   const router = useRouter();
-  const [hydrated, setHydrated] = useState(false);
-  const [isAdmin, setIsAdmin]   = useState(false);
-  const [signups, setSignups]   = useState<PendingSignup[]>([]);
-  const [filter, setFilter]     = useState<"pending" | "all">("pending");
+  const [hydrated, setHydrated]   = useState(false);
+  const [session, setSession]     = useState<StoredSession | null>(null);
+  const [signups, setSignups]     = useState<AdminSignupRow[]>([]);
+  const [filter, setFilter]       = useState<"pending" | "all">("pending");
   const [actionError, setActionError] = useState("");
 
   // Auth + admin gate.
   useEffect(() => {
-    const supabase = getSupabaseClientStrict();
     let cancelled = false;
     (async () => {
-      const { data: sess } = await supabase.auth.getSession();
-      if (!sess.session) {
+      const sess = readStoredSession();
+      if (!sess) {
         if (!cancelled) router.replace("/admin/sign-in");
         return;
       }
-      const { data: grant } = await supabase
-        .from("admin_grants")
-        .select("user_id")
-        .eq("user_id", sess.session.user.id)
-        .is("revoked_at", null)
-        .maybeSingle();
+      const isAdmin = await fetchIsApprovedAdmin(sess);
       if (cancelled) return;
-      if (!grant) {
+      if (!isAdmin) {
         router.replace("/admin/pending");
         return;
       }
-      setIsAdmin(true);
+      setSession(sess);
       setHydrated(true);
     })();
     return () => { cancelled = true; };
   }, [router]);
 
   const load = useCallback(async () => {
-    if (!isAdmin) return;
-    const supabase = getSupabaseClientStrict();
-    let q = supabase
-      .from("admin_signups")
-      .select("id, user_id, username, contribution_statement, status, reviewer_note, created_at")
-      .order("created_at", { ascending: false });
-    if (filter === "pending") q = q.eq("status", "pending");
-    const { data } = await q;
-    setSignups((data as unknown as PendingSignup[]) ?? []);
-  }, [filter, isAdmin]);
+    if (!session) return;
+    const rows = await fetchAdminSignups(session, filter);
+    setSignups(rows);
+  }, [filter, session]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      await load();
+      if (cancelled) return;
+    })();
+    return () => { cancelled = true; };
+  }, [load]);
 
-  async function approve(s: PendingSignup) {
+  async function approve(s: AdminSignupRow) {
+    if (!session) return;
     setActionError("");
-    const supabase = getSupabaseClientStrict();
 
-    const { data: sess } = await supabase.auth.getSession();
-    const reviewerId = sess.session?.user.id;
-    if (!reviewerId) { setActionError("Session expired."); return; }
-
-    // Two-step: insert grant, then mark signup approved. Both go through RLS.
-    const { error: grantErr } = await supabase.from("admin_grants").insert({
-      user_id:    s.user_id,
-      granted_by: reviewerId,
-      notes:      `Approved via admin grants UI`,
-    });
-    if (grantErr && !/duplicate key/i.test(grantErr.message)) {
-      setActionError(grantErr.message);
+    const grantErr = await insertAdminGrant(session, s.user_id, "Approved via admin grants UI");
+    if (grantErr && !/duplicate key/i.test(grantErr)) {
+      setActionError(grantErr);
       return;
     }
 
-    const { error: updErr } = await supabase
-      .from("admin_signups")
-      .update({
-        status:        "approved",
-        reviewed_by:   reviewerId,
-        reviewed_at:   new Date().toISOString(),
-      })
-      .eq("id", s.id);
-    if (updErr) { setActionError(updErr.message); return; }
+    const updErr = await updateAdminSignupStatus(session, s.id, "approved");
+    if (updErr) { setActionError(updErr); return; }
 
     await load();
   }
 
-  async function reject(s: PendingSignup) {
+  async function reject(s: AdminSignupRow) {
+    if (!session) return;
     setActionError("");
     const note = window.prompt(
       "Optional note for the applicant (visible to them on the pending page):",
       "",
     );
     if (note === null) return; // cancelled
-    const supabase = getSupabaseClientStrict();
 
-    const { data: sess } = await supabase.auth.getSession();
-    const reviewerId = sess.session?.user.id;
-    if (!reviewerId) { setActionError("Session expired."); return; }
-
-    const { error: updErr } = await supabase
-      .from("admin_signups")
-      .update({
-        status:        "rejected",
-        reviewed_by:   reviewerId,
-        reviewed_at:   new Date().toISOString(),
-        reviewer_note: note.trim() || null,
-      })
-      .eq("id", s.id);
-    if (updErr) { setActionError(updErr.message); return; }
+    const updErr = await updateAdminSignupStatus(
+      session,
+      s.id,
+      "rejected",
+      note.trim() || null,
+    );
+    if (updErr) { setActionError(updErr); return; }
 
     await load();
   }
@@ -321,8 +291,8 @@ export default function AdminGrantsPage() {
   );
 }
 
-function StatusBadge({ status }: { status: PendingSignup["status"] }) {
-  const colors: Record<PendingSignup["status"], string> = {
+function StatusBadge({ status }: { status: AdminSignupRow["status"] }) {
+  const colors: Record<AdminSignupRow["status"], string> = {
     pending:  "var(--accent)",
     approved: "var(--status-recovered)",
     rejected: "var(--status-fatal)",

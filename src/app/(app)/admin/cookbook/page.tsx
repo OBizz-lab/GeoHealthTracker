@@ -264,9 +264,14 @@ export default function AdminCookbookPage() {
             color:       "var(--text-tertiary)",
           }}
         >
-          When in doubt, contact{" "}
-          <a href="mailto:bafagihomar260@gmail.com" style={{ color: "var(--accent)" }}>
-            bafagihomar260@gmail.com
+          When in doubt, message{" "}
+          <a
+            href="https://www.reddit.com/user/Ob344/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "var(--accent)" }}
+          >
+            u/Ob344 on Reddit
           </a>
           .
         </p>

@@ -4,9 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { getSupabaseClientStrict } from "@/lib/supabase/client";
+import { readStoredSession, fetchIsApprovedAdmin } from "@/lib/auth/session";
+import { submitCase } from "./actions";
+
+type SubmissionKind = "confirmed" | "mention" | "exposed";
 
 interface FormState {
+  kind:            SubmissionKind;
   source_url:      string;
   location_name:   string;
   country:         string;
@@ -22,6 +26,7 @@ interface FormState {
 }
 
 const INITIAL: FormState = {
+  kind:           "confirmed",
   source_url:     "",
   location_name:  "",
   country:        "",
@@ -36,32 +41,34 @@ const INITIAL: FormState = {
   notes:          "",
 };
 
+const KIND_OPTIONS: { value: SubmissionKind; label: string; desc: string }[] = [
+  { value: "confirmed", label: "Confirmed case", desc: "Verified case from an official health authority." },
+  { value: "mention",   label: "Mention",        desc: "News article reporting hantavirus in a country with no confirmed cases yet." },
+  { value: "exposed",   label: "Spread",         desc: "Surveillance follow-up — a contact of a confirmed case has returned to this country." },
+];
+
 export default function AdminSubmitPage() {
   const router = useRouter();
-  const [form, setForm]       = useState<FormState>(INITIAL);
-  const [error, setError]     = useState("");
+  const [form, setForm]             = useState<FormState>(INITIAL);
+  const [error, setError]           = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [hydrated, setHydrated]     = useState(false);
 
-  // Auth + admin-grant gate — bounce to sign-in if not authed; bounce to
-  // /admin/pending if authed but not yet an approved admin.
+  // Auth + admin-grant gate — uses lock-free helpers (raw localStorage read
+  // for session, raw fetch for admin_grants). The browser supabase-js client
+  // is unreliable on this codepath because its navigator.locks mutex can
+  // get poisoned by HMR / hung auto-refresh.
   useEffect(() => {
-    const supabase = getSupabaseClientStrict();
     let cancelled = false;
     (async () => {
-      const { data: sess } = await supabase.auth.getSession();
-      if (!sess.session) {
+      const session = readStoredSession();
+      if (!session) {
         if (!cancelled) router.replace("/admin/sign-in");
         return;
       }
-      const { data: grant } = await supabase
-        .from("admin_grants")
-        .select("user_id")
-        .eq("user_id", sess.session.user.id)
-        .is("revoked_at", null)
-        .maybeSingle();
+      const isAdmin = await fetchIsApprovedAdmin(session);
       if (cancelled) return;
-      if (!grant) {
+      if (!isAdmin) {
         router.replace("/admin/pending");
         return;
       }
@@ -78,20 +85,32 @@ export default function AdminSubmitPage() {
     e.preventDefault();
     setError("");
 
-    // Validation
+    // Client-side validation (server re-checks too)
     if (!/^https:\/\//.test(form.source_url)) {
       setError("Source URL must start with https://");
       return;
     }
-    const cc = parseInt(form.case_count, 10);
-    const fc = parseInt(form.fatality_count, 10);
-    if (!Number.isFinite(cc) || cc < 1) { setError("Case count must be ≥ 1."); return; }
-    if (!Number.isFinite(fc) || fc < 0) { setError("Fatality count must be ≥ 0."); return; }
-    if (fc > cc) { setError("Fatality count cannot exceed case count."); return; }
-    if (form.status === "fatal" && fc < 1) {
-      setError("Status 'fatal' requires fatality count ≥ 1."); return;
+    if (!form.country.trim()) {
+      setError("Country (ISO-2) is required for every submission type.");
+      return;
     }
-
+    // Confirmed cases require precise counts; mention / spread auto-default
+    // to representing one record.
+    let cc: number;
+    let fc: number;
+    if (form.kind === "confirmed") {
+      cc = parseInt(form.case_count, 10);
+      fc = parseInt(form.fatality_count, 10);
+      if (!Number.isFinite(cc) || cc < 1) { setError("Case count must be ≥ 1."); return; }
+      if (!Number.isFinite(fc) || fc < 0) { setError("Fatality count must be ≥ 0."); return; }
+      if (fc > cc) { setError("Fatality count cannot exceed case count."); return; }
+      if (form.status === "fatal" && fc < 1) {
+        setError("Status 'fatal' requires fatality count ≥ 1."); return;
+      }
+    } else {
+      cc = 1;
+      fc = 0;
+    }
     const lat = form.location_lat ? parseFloat(form.location_lat) : null;
     const lng = form.location_lng ? parseFloat(form.location_lng) : null;
     if ((lat == null) !== (lng == null)) {
@@ -99,84 +118,39 @@ export default function AdminSubmitPage() {
       return;
     }
 
-    setSubmitting(true);
-
-    // Wrap every supabase call in a 15s timeout so the form never
-    // permanently hangs. If the request is blocked by an ad-blocker or
-    // browser extension (ERR_BLOCKED_BY_CLIENT), the fetch promise never
-    // resolves — without the timeout the button would stay "Submitting..."
-    // forever and queue subsequent requests too.
-    function withTimeout<T>(label: string, p: PromiseLike<T>, ms = 15_000): Promise<T> {
-      return new Promise<T>((resolve, reject) => {
-        const t = setTimeout(() => {
-          reject(new Error(
-            `Request "${label}" timed out after ${ms / 1000}s. ` +
-            `This is usually caused by an ad-blocker or browser extension ` +
-            `blocking Supabase. Try disabling extensions on this site or ` +
-            `using a different browser.`
-          ));
-        }, ms);
-        Promise.resolve(p).then(
-          (v) => { clearTimeout(t); resolve(v); },
-          (e) => { clearTimeout(t); reject(e); },
-        );
-      });
+    const session = readStoredSession();
+    if (!session) {
+      setError("Could not find your session. Sign in again.");
+      return;
     }
 
+    setSubmitting(true);
     try {
-      const supabase = getSupabaseClientStrict();
+      const result = await submitCase({
+        accessToken: session.access_token,
+        kind:           form.kind,
+        source_url:     form.source_url,
+        location_name:  form.location_name || null,
+        country:        form.country.toUpperCase() || null,
+        state_province: form.state_province || null,
+        location_lat:   lat,
+        location_lng:   lng,
+        status:         form.kind === "confirmed" ? form.status : "suspected",
+        strain:         form.kind === "confirmed" ? (form.strain || null) : null,
+        case_count:     cc,
+        fatality_count: fc,
+        reported_date:  form.reported_date,
+        notes:          form.notes || null,
+      });
 
-      const { data: sess, error: sessErr } = await withTimeout(
-        "auth.getSession",
-        supabase.auth.getSession(),
-      );
-      if (sessErr) { setError(`Session error: ${sessErr.message}`); setSubmitting(false); return; }
-      const userId = sess.session?.user.id;
-      if (!userId) { setError("Session expired. Sign in again."); setSubmitting(false); return; }
-
-      const { data: disease, error: diseaseErr } = await withTimeout(
-        "diseases lookup",
-        supabase
-          .from("diseases")
-          .select("id")
-          .eq("slug", "hantavirus")
-          .single(),
-      );
-      if (diseaseErr) { setError(`Disease lookup failed: ${diseaseErr.message}`); setSubmitting(false); return; }
-      if (!disease) { setError("Cannot resolve disease."); setSubmitting(false); return; }
-
-      const { error: insertErr } = await withTimeout(
-        "cases insert",
-        supabase.from("cases").insert({
-          disease_id:     (disease as { id: string }).id,
-          kind:           "confirmed",
-          source_url:     form.source_url,
-          location_name:  form.location_name || null,
-          country:        form.country.toUpperCase() || null,
-          state_province: form.state_province || null,
-          location_lat:   lat,
-          location_lng:   lng,
-          status:         form.status,
-          strain:         form.strain || null,
-          case_count:     cc,
-          fatality_count: fc,
-          reported_date:  form.reported_date,
-          notes:          form.notes || null,
-          is_published:   false,
-          submitted_by:   userId,
-        }),
-      );
-
-      if (insertErr) {
-        console.error("[submit] insert failed", insertErr);
-        setError(`Insert failed: ${insertErr.message}${insertErr.code ? ` (code ${insertErr.code})` : ""}`);
+      if (!result.ok) {
+        setError(result.error);
         setSubmitting(false);
         return;
       }
-
       router.replace("/cases?submitted=1");
     } catch (err) {
-      console.error("[submit] unexpected error", err);
+      console.error("[submit] server action failed", err);
       setError(err instanceof Error ? err.message : "Unexpected error during submission.");
       setSubmitting(false);
     }
@@ -197,7 +171,7 @@ export default function AdminSubmitPage() {
         className="t-display"
         style={{ margin: "12px 0 8px", color: "var(--text-primary)" }}
       >
-        Submit a case
+        Submit a record
       </h1>
       <p
         style={{
@@ -208,10 +182,56 @@ export default function AdminSubmitPage() {
         }}
       >
         Your submission goes to the moderation queue as <strong>unconfirmed</strong>.
-        Another admin must approve it before it counts toward case totals on the public map.
+        Another admin must approve it before it appears on the public map.
       </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col" style={{ gap: 18 }}>
+        {/* Type selector — picks which kind of record this is. */}
+        <Field label="Type">
+          <div className="grid gap-2 md:grid-cols-3">
+            {KIND_OPTIONS.map((opt) => {
+              const active = form.kind === opt.value;
+              return (
+                <button
+                  type="button"
+                  key={opt.value}
+                  onClick={() => set("kind", opt.value)}
+                  className="text-left transition-colors"
+                  style={{
+                    padding:      "10px 12px",
+                    borderRadius: 8,
+                    border:       active
+                      ? "1px solid var(--accent)"
+                      : "1px solid var(--border-default)",
+                    background:   active
+                      ? "var(--accent-muted)"
+                      : "var(--bg-base)",
+                    cursor:       "pointer",
+                  }}
+                  aria-pressed={active}
+                >
+                  <div
+                    style={{
+                      fontSize:   13,
+                      fontWeight: 600,
+                      color:      active ? "var(--accent)" : "var(--text-primary)",
+                      marginBottom: 2,
+                    }}
+                  >
+                    {opt.label}
+                  </div>
+                  <div
+                    className="t-cap"
+                    style={{ color: "var(--text-tertiary)", lineHeight: "15px" }}
+                  >
+                    {opt.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
         <Field label="Source URL (required)">
           <input
             type="url"
@@ -281,54 +301,58 @@ export default function AdminSubmitPage() {
           </Field>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Field label="Status">
-            <select
-              value={form.status}
-              onChange={(e) => set("status", e.target.value as FormState["status"])}
-              style={inputStyle}
-            >
-              <option value="suspected">Suspected</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="fatal">Fatal</option>
-            </select>
-          </Field>
-          <Field label="Strain (optional)">
-            <select
-              value={form.strain}
-              onChange={(e) => set("strain", e.target.value as FormState["strain"])}
-              style={inputStyle}
-            >
-              <option value="">—</option>
-              <option value="sin_nombre">Sin Nombre</option>
-              <option value="andes">Andes</option>
-              <option value="seoul">Seoul</option>
-              <option value="puumala">Puumala</option>
-              <option value="other">Other</option>
-            </select>
-          </Field>
-          <Field label="Case count">
-            <input
-              type="number"
-              min={1}
-              value={form.case_count}
-              onChange={(e) => set("case_count", e.target.value)}
-              required
-              style={inputStyle}
-            />
-          </Field>
-        </div>
+        {form.kind === "confirmed" && (
+          <>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field label="Status">
+                <select
+                  value={form.status}
+                  onChange={(e) => set("status", e.target.value as FormState["status"])}
+                  style={inputStyle}
+                >
+                  <option value="suspected">Suspected</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="fatal">Fatal</option>
+                </select>
+              </Field>
+              <Field label="Strain (optional)">
+                <select
+                  value={form.strain}
+                  onChange={(e) => set("strain", e.target.value as FormState["strain"])}
+                  style={inputStyle}
+                >
+                  <option value="">—</option>
+                  <option value="sin_nombre">Sin Nombre</option>
+                  <option value="andes">Andes</option>
+                  <option value="seoul">Seoul</option>
+                  <option value="puumala">Puumala</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+              <Field label="Case count">
+                <input
+                  type="number"
+                  min={1}
+                  value={form.case_count}
+                  onChange={(e) => set("case_count", e.target.value)}
+                  required
+                  style={inputStyle}
+                />
+              </Field>
+            </div>
 
-        <Field label="Fatality count (subset of case count)">
-          <input
-            type="number"
-            min={0}
-            value={form.fatality_count}
-            onChange={(e) => set("fatality_count", e.target.value)}
-            required
-            style={inputStyle}
-          />
-        </Field>
+            <Field label="Fatality count (subset of case count)">
+              <input
+                type="number"
+                min={0}
+                value={form.fatality_count}
+                onChange={(e) => set("fatality_count", e.target.value)}
+                required
+                style={inputStyle}
+              />
+            </Field>
+          </>
+        )}
 
         <Field label="Notes">
           <textarea

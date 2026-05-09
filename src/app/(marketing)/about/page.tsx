@@ -8,7 +8,7 @@ import {
   overviewContent,
   privacyContent,
   termsContent,
-  PLACEHOLDERS,
+  REDDIT_CONTACT_URL,
 } from "@/lib/legal-content";
 
 export const metadata = {
@@ -306,20 +306,10 @@ export default function AboutPage() {
                       >
                         {row.label}
                       </div>
-                      <div>{row.value}</div>
+                      <div>{linkifyReddit(row.value)}</div>
                     </div>
                   ))}
                 </div>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "var(--text-tertiary)",
-                    marginTop: 16,
-                  }}
-                >
-                  Bracketed values like {PLACEHOLDERS.contactEmail} are
-                  placeholders to be replaced before launch.
-                </p>
               </section>
             </article>
 
@@ -331,6 +321,29 @@ export default function AboutPage() {
         </div>
       </section>
       <SiteFooter />
+    </>
+  );
+}
+
+// Render the Reddit handle wherever it appears in a contact row as a real
+// clickable link, with the surrounding free text preserved.
+function linkifyReddit(value: string): React.ReactNode {
+  const handle = "u/Ob344 on Reddit";
+  if (!value.includes(handle)) return value;
+  const [before, ...rest] = value.split(handle);
+  const after = rest.join(handle);
+  return (
+    <>
+      {before}
+      <a
+        href={REDDIT_CONTACT_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "var(--accent)" }}
+      >
+        {handle}
+      </a>
+      {after}
     </>
   );
 }

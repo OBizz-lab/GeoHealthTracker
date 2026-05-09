@@ -1,8 +1,16 @@
 import type { Report, ReportSeverity, ReportStatus } from "@/lib/types";
-import { getSupabaseClient } from "./client";
 
 // =============================================================================
-// Fetch published hantavirus cases from Supabase and convert to Report[]
+// Fetch published hantavirus cases from Supabase and convert to Report[].
+//
+// We deliberately go straight to the PostgREST endpoint with `fetch()` and
+// the anon key — instead of through @supabase/supabase-js — because that
+// client takes a navigator.locks auth lock on every query, and the lock can
+// get poisoned (HMR, a hung auto-refresh fetch, etc.) and never release. A
+// raw fetch has no lock and can't deadlock. This data is public anyway
+// (RLS policy `cases_public_read` allows anon to read `is_published=true`
+// rows), so the bearer is just the anon key — same as what supabase-js
+// would have sent.
 // =============================================================================
 
 interface DbCase {
@@ -47,8 +55,12 @@ function mapSeverity(raw: string | null): ReportSeverity {
 }
 
 function dbCaseToReport(row: DbCase): Report | null {
-  // Skip ungeocoded rows — they can't be placed on the map
-  if (row.location_lat == null || row.location_lng == null) return null;
+  // Mention and exposure rows are aggregated to a country centroid for
+  // display, so they need a country code. (Confirmed cases without a
+  // country still count toward "ZZ" buckets.) Geocoding is no longer
+  // required — non-geocoded confirmed cases still feed totals and the
+  // country choropleth; they just don't render as individual markers.
+  if (row.kind !== "confirmed" && (!row.country || row.country === "ZZ")) return null;
 
   const kind =
     row.kind === "mention" ? "mention" :
@@ -76,50 +88,51 @@ function dbCaseToReport(row: DbCase): Report | null {
   };
 }
 
+const SELECT_COLS =
+  "id,kind,location_lat,location_lng,location_name,country,state_province," +
+  "status,severity,reported_date,source_url,case_count,fatality_count," +
+  "cluster_id,notes,strain,ingestion_sources(name)";
+
 /**
- * Fetch all published, geocoded hantavirus cases from Supabase.
- * Returns an empty array on error (map falls back gracefully).
+ * Fetch all published, geocoded hantavirus cases. Returns an empty array
+ * on any network or API error (the map / cases list fall back gracefully).
  */
 export async function fetchPublishedCases(): Promise<Report[]> {
-  const supabase = getSupabaseClient();
-  if (!supabase) return [];
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return [];
 
-  const { data, error } = await supabase
-    .from("cases")
-    .select(`
-      id,
-      kind,
-      location_lat,
-      location_lng,
-      location_name,
-      country,
-      state_province,
-      status,
-      severity,
-      reported_date,
-      source_url,
-      case_count,
-      fatality_count,
-      cluster_id,
-      notes,
-      strain,
-      ingestion_sources ( name )
-    `)
-    .eq("is_published", true)
-    .not("location_lat", "is", null)
-    .order("reported_date", { ascending: false })
-    .limit(500);
+  const params = new URLSearchParams({
+    select:        SELECT_COLS,
+    is_published:  "eq.true",
+    order:         "reported_date.desc",
+    limit:         "500",
+  });
 
-  if (error) {
-    console.error("[cases] Supabase fetch error:", error.message);
+  const endpoint = `${url}/rest/v1/cases?${params.toString()}`;
+
+  // 15s safety timeout — public REST endpoint, no auth lock at risk, but
+  // we still don't want the page stuck on a slow connection.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey:        key,
+        Authorization: `Bearer ${key}`,
+      },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) {
+      console.error("[cases] PostgREST fetch failed:", res.status, await res.text().catch(() => ""));
+      return [];
+    }
+    const data = (await res.json()) as DbCase[];
+    return data.map(dbCaseToReport).filter((r): r is Report => r !== null);
+  } catch (err) {
+    console.error("[cases] fetch error:", err);
     return [];
+  } finally {
+    clearTimeout(timer);
   }
-
-  // Cast through `unknown` because Supabase's typed select infers relation
-  // joins (`ingestion_sources(name)`) as arrays, while DbCase models them
-  // as a single nullable object. Going through unknown is the documented
-  // fix for "neither type sufficiently overlaps" errors.
-  return (data as unknown as DbCase[])
-    .map(dbCaseToReport)
-    .filter((r): r is Report => r !== null);
 }

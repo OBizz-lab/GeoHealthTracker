@@ -34,7 +34,7 @@ export function CaseDrawer({ report, onClose }: CaseDrawerProps) {
   })();
 
   function handleCopyCoords() {
-    if (!report) return;
+    if (!report || report.lat == null || report.lng == null) return;
     void navigator.clipboard.writeText(`${report.lat.toFixed(4)}, ${report.lng.toFixed(4)}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
@@ -96,14 +96,23 @@ export function CaseDrawer({ report, onClose }: CaseDrawerProps) {
                   : report.country}
               </p>
             )}
-            <button
-              onClick={handleCopyCoords}
-              className="t-mono inline-flex items-center"
-              style={{ gap: 6, color: "var(--text-secondary)", alignSelf: "flex-start" }}
-            >
-              {report.lat.toFixed(4)}, {report.lng.toFixed(4)}
-              <Copy className="h-3 w-3" />
-            </button>
+            {report.lat != null && report.lng != null ? (
+              <button
+                onClick={handleCopyCoords}
+                className="t-mono inline-flex items-center"
+                style={{ gap: 6, color: "var(--text-secondary)", alignSelf: "flex-start" }}
+              >
+                {report.lat.toFixed(4)}, {report.lng.toFixed(4)}
+                <Copy className="h-3 w-3" />
+              </button>
+            ) : (
+              <span
+                className="t-cap"
+                style={{ color: "var(--text-tertiary)", fontStyle: "italic" }}
+              >
+                Coordinates not yet geocoded
+              </span>
+            )}
           </div>
 
           {/* Multiple cases banner */}
@@ -252,7 +261,10 @@ export function CaseDrawer({ report, onClose }: CaseDrawerProps) {
           Share link
         </button>
         <a
-          href={`mailto:omar@hantavirustrack.org?subject=Case+report+issue:+${encodeURIComponent(report.id)}`}
+          href="https://www.reddit.com/user/Ob344/"
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Message u/Ob344 on Reddit · ref case ${report.id}`}
           className="inline-flex flex-1 items-center justify-center transition-colors"
           style={{
             padding:      "8px 12px",

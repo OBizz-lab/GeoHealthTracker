@@ -10,10 +10,9 @@ import { LegendCard }       from "@/components/map/legend-card";
 import { StatsStrip }       from "@/components/map/stats-strip";
 import { LiveSignalStrip }  from "@/components/map/live-signal-strip";
 import { CaseDrawer }       from "@/components/map/case-drawer";
-import { MentionsDrawer }   from "@/components/map/mentions-drawer";
-import { ExposureDrawer }   from "@/components/map/exposure-drawer";
+import { CountryDrawer, type CountryPayload, type CountrySection }
+  from "@/components/map/country-drawer";
 import { fetchPublishedCases } from "@/lib/supabase/cases";
-import type { CountryMentions, CountryExposure } from "@/components/map/map-view";
 import type { Report, ReportStatus } from "@/lib/types";
 
 // Drawer width (desktop). Used for both stats-strip nudging and layout math.
@@ -52,7 +51,8 @@ function MapLoader({ label = "Loading map…" }: { label?: string }) {
 const REGION_FILTERS: Record<Region, (r: Report) => boolean> = {
   four_corners: (r) =>
     ["NM", "AZ", "CO", "UT"].includes(r.state_province ?? "") ||
-    (r.country === "US" && r.lat >= 32 && r.lat <= 42 && r.lng >= -114 && r.lng <= -102),
+    (r.country === "US" && r.lat != null && r.lng != null &&
+     r.lat >= 32 && r.lat <= 42 && r.lng >= -114 && r.lng <= -102),
   continental_us: (r) => r.country === "US",
   latin_america: (r) =>
     ["MX","GT","HN","SV","NI","CR","PA","CO","VE","EC","PE","BR","BO","PY","UY","AR","CL"].includes(r.country),
@@ -103,35 +103,71 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
   const [activeRegion,   setActiveRegion]   = useState<Region | null>(null);
   const [showHeatmap]                       = useState(true); // always on per design
 
-  // ── Drawer state — single source of truth, mutually exclusive ─────────────
-  // Selecting a confirmed-case marker *replaces* any open mention drawer and
-  // vice versa, so the user only ever sees one inspection panel at a time.
-  const [selectedReport, setSelectedReport]       = useState<Report | null>(null);
-  const [selectedMentions, setSelectedMentions]   = useState<CountryMentions | null>(null);
-  const [selectedExposure, setSelectedExposure]   = useState<CountryExposure | null>(null);
-  const drawerOpen =
-    selectedReport !== null || selectedMentions !== null || selectedExposure !== null;
+  // ── Drawer state ──────────────────────────────────────────────────────────
+  // Two drawers max, one at a time:
+  //   • selectedCountry  — the unified Cases / Mentions / Spread country panel
+  //   • selectedReport   — individual case detail (drill-in)
+  // `previousCountry` lets the case-drawer close button pop back to the
+  // country panel rather than fully dismiss the chain.
+  const [selectedReport,   setSelectedReport]   = useState<Report | null>(null);
+  const [selectedCountry,  setSelectedCountry]  = useState<CountryPayload | null>(null);
+  const [previousCountry,  setPreviousCountry]  = useState<CountryPayload | null>(null);
+  const drawerOpen = selectedReport !== null || selectedCountry !== null;
 
   const handleSelectConfirmed = useCallback((r: Report) => {
-    setSelectedMentions(null);
-    setSelectedExposure(null);
+    setSelectedCountry(null);
+    setPreviousCountry(null);
     setSelectedReport(r);
   }, []);
-  const handleSelectMentions  = useCallback((c: CountryMentions) => {
-    setSelectedReport(null);
-    setSelectedExposure(null);
-    setSelectedMentions(c);
+
+  // Build the unified country payload (cases + mentions + spread) from the
+  // current `reports` array. Called from MapView when any country-scoped
+  // marker or the country fill is clicked. The `defaultSection` parameter
+  // determines which accordion section starts open.
+  const buildCountryPayload = useCallback(
+    (iso: string, defaultSection: CountrySection): CountryPayload => {
+      const within = reports.filter((r) => r.country === iso);
+      return {
+        iso,
+        cases:    within.filter((r) => r.kind === "confirmed"),
+        mentions: within.filter((r) => r.kind === "mention"),
+        exposed:  within.filter((r) => r.kind === "exposed"),
+        defaultSection,
+      };
+    },
+    [reports],
+  );
+
+  const handleSelectCountry = useCallback(
+    (iso: string, defaultSection: CountrySection) => {
+      setSelectedReport(null);
+      setPreviousCountry(null);
+      setSelectedCountry(buildCountryPayload(iso, defaultSection));
+    },
+    [buildCountryPayload],
+  );
+
+  // Drill from the country drawer into a specific case. Stash the country
+  // so closing the case drawer can pop back to the list.
+  const handleSelectCaseFromCountry = useCallback((r: Report) => {
+    setSelectedCountry((prev) => {
+      setPreviousCountry(prev);
+      return null;
+    });
+    setSelectedReport(r);
   }, []);
-  const handleSelectExposure  = useCallback((c: CountryExposure) => {
-    setSelectedReport(null);
-    setSelectedMentions(null);
-    setSelectedExposure(c);
-  }, []);
+
   const closeAllDrawers = useCallback(() => {
+    if (selectedReport && previousCountry) {
+      setSelectedReport(null);
+      setSelectedCountry(previousCountry);
+      setPreviousCountry(null);
+      return;
+    }
     setSelectedReport(null);
-    setSelectedMentions(null);
-    setSelectedExposure(null);
-  }, []);
+    setSelectedCountry(null);
+    setPreviousCountry(null);
+  }, [selectedReport, previousCountry]);
 
   // Esc closes whichever drawer is open
   useEffect(() => {
@@ -300,8 +336,7 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
             mapboxToken={mapboxToken}
             showCountryHeatmap={showHeatmap}
             onSelectConfirmed={handleSelectConfirmed}
-            onSelectMentions={handleSelectMentions}
-            onSelectExposure={handleSelectExposure}
+            onSelectCountry={handleSelectCountry}
           />
 
           {/* ── Stats strip — top center of the map area. Because the
@@ -384,20 +419,16 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
               <CaseDrawer report={selectedReport} onClose={closeAllDrawers} />
             </div>
           )}
-          {selectedMentions && (
+          {selectedCountry && (
             <div
               className="pointer-events-auto absolute z-30 md:hidden"
               style={{ left: 0, right: 0, bottom: 40, height: "65vh", maxHeight: "65vh" }}
             >
-              <MentionsDrawer country={selectedMentions} onClose={closeAllDrawers} />
-            </div>
-          )}
-          {selectedExposure && (
-            <div
-              className="pointer-events-auto absolute z-30 md:hidden"
-              style={{ left: 0, right: 0, bottom: 40, height: "65vh", maxHeight: "65vh" }}
-            >
-              <ExposureDrawer country={selectedExposure} onClose={closeAllDrawers} />
+              <CountryDrawer
+                country={selectedCountry}
+                onClose={closeAllDrawers}
+                onSelectCase={handleSelectCaseFromCountry}
+              />
             </div>
           )}
         </div>
@@ -415,11 +446,12 @@ export function MapShell({ reports: seedReports = [], mapboxToken }: MapShellPro
           {selectedReport && (
             <CaseDrawer report={selectedReport} onClose={closeAllDrawers} />
           )}
-          {selectedMentions && (
-            <MentionsDrawer country={selectedMentions} onClose={closeAllDrawers} />
-          )}
-          {selectedExposure && (
-            <ExposureDrawer country={selectedExposure} onClose={closeAllDrawers} />
+          {selectedCountry && (
+            <CountryDrawer
+              country={selectedCountry}
+              onClose={closeAllDrawers}
+              onSelectCase={handleSelectCaseFromCountry}
+            />
           )}
         </div>
       </div>

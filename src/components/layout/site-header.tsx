@@ -8,6 +8,13 @@ import { Heart, LogOut, MapPin, Menu, Search } from "lucide-react";
 import { brand, nav } from "@/lib/copy";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import {
+  readStoredSession,
+  fetchIsApprovedAdmin,
+  clearStoredSession,
+  notifyAuthChange,
+  AUTH_CHANGE_EVENT,
+} from "@/lib/auth/session";
+import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -34,37 +41,51 @@ export function SiteHeader() {
 
   // Auth state — drives Sign in / Sign out swap, hides the "Sign up free"
   // CTA for authenticated users, and exposes the Admin link for approved
-  // admins.
+  // admins. Uses lock-free helpers so we don't block on a poisoned
+  // navigator.locks mutex inside @supabase/supabase-js.
   const [authed, setAuthed] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
     let cancelled = false;
     async function refresh() {
-      const { data } = await supabase!.auth.getSession();
-      const has = !!data.session;
+      const session = readStoredSession();
       if (cancelled) return;
-      setAuthed(has);
-      if (!has) { setIsAdmin(false); return; }
-      const { data: grant } = await supabase!
-        .from("admin_grants")
-        .select("user_id")
-        .eq("user_id", data.session!.user.id)
-        .is("revoked_at", null)
-        .maybeSingle();
-      if (!cancelled) setIsAdmin(!!grant);
+      setAuthed(!!session);
+      if (!session) { setIsAdmin(false); return; }
+      const ok = await fetchIsApprovedAdmin(session);
+      if (!cancelled) setIsAdmin(ok);
     }
     refresh();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(refresh);
-    return () => { cancelled = true; subscription.unsubscribe(); };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith("sb-")) refresh();
+    };
+    const onAuthChange = () => refresh();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(AUTH_CHANGE_EVENT, onAuthChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(AUTH_CHANGE_EVENT, onAuthChange);
+    };
   }, []);
 
   async function handleSignOut() {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
-    await supabase.auth.signOut();
+    // Clear localStorage immediately so the UI updates without waiting on
+    // supabase.auth.signOut() (which goes through the navigator.locks
+    // mutex and can hang). The SDK call is fire-and-forget below; our
+    // local clearStoredSession() is what actually drops the session for
+    // every later page-mount auth check.
+    clearStoredSession();
     setAuthed(false);
+    setIsAdmin(false);
+    notifyAuthChange();
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      // Best-effort: tell GoTrue to invalidate the refresh token. We
+      // don't await — the lock may be poisoned, but the local session is
+      // already gone which is what matters for the UI.
+      void supabase.auth.signOut().catch(() => { /* */ });
+    }
     router.push("/");
   }
 
@@ -178,8 +199,10 @@ export function SiteHeader() {
                 {[
                   { href: "/admin/queue",    label: "Moderation queue" },
                   { href: "/admin/grants",   label: "Approve admins" },
+                  { href: "/admin/list",     label: "Admin list" },
                   { href: "/admin/submit",   label: "Add a case" },
                   { href: "/admin/cookbook", label: "Cookbook" },
+                  { href: "/admin/profile",  label: "Your profile" },
                 ].map((a) => (
                   <SheetClose
                     key={a.href}
@@ -211,27 +234,44 @@ export function SiteHeader() {
               style={{ borderTop: "1px solid var(--border-subtle)" }}
             >
               {authed ? (
-                <SheetClose
-                  render={
-                    <button
-                      type="button"
-                      onClick={handleSignOut}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-md transition-colors"
-                      style={{
-                        padding: "10px 12px",
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: "var(--text-secondary)",
-                        background: "transparent",
-                        border: "1px solid var(--border-default)",
-                        cursor: "pointer",
-                      }}
-                    />
-                  }
-                >
-                  <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  Sign out
-                </SheetClose>
+                <>
+                  <SheetClose
+                    render={
+                      <Link
+                        href="/admin/profile"
+                        className="rounded-md px-3 py-2.5 transition-colors"
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: "var(--text-secondary)",
+                        }}
+                      />
+                    }
+                  >
+                    Your profile
+                  </SheetClose>
+                  <SheetClose
+                    render={
+                      <button
+                        type="button"
+                        onClick={handleSignOut}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-md transition-colors"
+                        style={{
+                          padding: "10px 12px",
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: "var(--text-secondary)",
+                          background: "transparent",
+                          border: "1px solid var(--border-default)",
+                          cursor: "pointer",
+                        }}
+                      />
+                    }
+                  >
+                    <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    Sign out
+                  </SheetClose>
+                </>
               ) : (
                 <>
                   <SheetClose
@@ -399,7 +439,41 @@ export function SiteHeader() {
               >
                 Grants
               </Link>
+              <Link
+                href="/admin/list"
+                className="hidden items-center justify-center transition-colors sm:inline-flex"
+                style={{
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: pathname.startsWith("/admin/list")
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
+                  borderRadius: 8,
+                }}
+              >
+                Admins
+              </Link>
             </>
+          )}
+
+          {/* Profile — visible to any signed-in user (admin or pending). */}
+          {authed && (
+            <Link
+              href="/admin/profile"
+              className="hidden items-center justify-center transition-colors sm:inline-flex"
+              style={{
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 500,
+                color: pathname.startsWith("/admin/profile")
+                  ? "var(--text-primary)"
+                  : "var(--text-secondary)",
+                borderRadius: 8,
+              }}
+            >
+              Profile
+            </Link>
           )}
 
           {/* Sign in / Sign out — swaps based on auth state */}

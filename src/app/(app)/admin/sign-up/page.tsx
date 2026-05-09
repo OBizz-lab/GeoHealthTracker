@@ -5,34 +5,41 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { getSupabaseClientStrict } from "@/lib/supabase/client";
+import {
+  USERNAME_HINT,
+  isValidUsername,
+  normalizeUsername,
+  usernameToEmail,
+} from "@/lib/auth/username";
+import { readStoredSession, insertAdminSignup, notifyAuthChange } from "@/lib/auth/session";
 
 // =============================================================================
-// /admin/sign-up — three-field signup per the user's spec.
-// "username" is the user's email (Supabase Auth needs an email); we label it
-// plainly so the field is unambiguous. After signUp() succeeds, we insert a
-// row in `admin_signups` with status='pending'. The user is then routed to
-// /admin/pending where they wait for an approved admin to grant access.
+// /admin/sign-up — three-field signup: username, contribution, password.
+// We never collect or send email. The client maps the username to a
+// synthetic noreply address purely so Supabase Auth's data model is happy.
+// After signUp() succeeds, we POST to admin_signups via raw fetch (rather
+// than the SDK's `from(...).insert(...)`, which goes through the same
+// poisoned navigator.locks mutex that breaks every other SDK call here).
 // =============================================================================
 
 export default function AdminSignUpPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [username, setUsername]         = useState("");
   const [contribution, setContribution] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  const [password, setPassword]         = useState("");
+  const [error, setError]               = useState("");
+  const [loading, setLoading]           = useState(false);
+  const [hydrated, setHydrated]         = useState(false);
 
-  // If you're already authenticated, the signup form is the wrong place —
-  // route to /admin/pending (which itself routes approved admins onward to
-  // /cases). This is what the user wanted: revisiting /admin/sign-up while
-  // already pending should land them on the status page, not a fresh form.
   useEffect(() => {
-    const supabase = getSupabaseClientStrict();
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/admin/pending");
+    let cancelled = false;
+    (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      if (readStoredSession()) router.replace("/admin/pending");
       else setHydrated(true);
-    });
+    })();
+    return () => { cancelled = true; };
   }, [router]);
 
   if (!hydrated) return null;
@@ -41,8 +48,9 @@ export default function AdminSignUpPage() {
     e.preventDefault();
     setError("");
 
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setError("Please enter a valid email address.");
+    const normalized = normalizeUsername(username);
+    if (!isValidUsername(normalized)) {
+      setError(`Invalid username. ${USERNAME_HINT}`);
       return;
     }
     if (contribution.trim().length < 30) {
@@ -56,45 +64,55 @@ export default function AdminSignUpPage() {
 
     setLoading(true);
     const supabase = getSupabaseClientStrict();
+    const syntheticEmail = usernameToEmail(normalized);
 
-    // Create the auth.users row.
-    const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-      email,
+    const { error: signUpErr } = await supabase.auth.signUp({
+      email:    syntheticEmail,
       password,
+      options:  { data: { username: normalized } },
     });
-    if (signUpErr) { setError(signUpErr.message); setLoading(false); return; }
-
-    const userId = signUpData.user?.id;
-    if (!userId) {
-      // No session and no user — should not happen in normal flow
-      setError("Signup did not return a user record. Try again.");
+    if (signUpErr) {
+      const friendly = /already registered|already in use/i.test(signUpErr.message)
+        ? "That username is already taken. Pick another."
+        : signUpErr.message;
+      setError(friendly);
       setLoading(false);
       return;
     }
 
-    // Persist the contribution statement so we can write the admin_signups
-    // row whether or not the user has a session yet (Supabase project email-
-    // confirmation makes signUp() return no session — the row gets written
-    // after the user confirms and signs in).
-    try {
-      window.localStorage.setItem(
-        "pendingContribution",
-        JSON.stringify({ email, contribution: contribution.trim() }),
-      );
-    } catch { /* localStorage unavailable; non-fatal */ }
-
-    if (signUpData.session) {
-      const { error: insertErr } = await supabase.from("admin_signups").insert({
-        user_id: userId,
-        username: email,
-        contribution_statement: contribution.trim(),
-      });
-      if (insertErr) { setError(insertErr.message); setLoading(false); return; }
-      try { window.localStorage.removeItem("pendingContribution"); } catch { /* */ }
-      router.replace("/admin/pending");
-    } else {
-      router.replace("/admin/pending?confirm-email=1");
+    // signUp writes the session to localStorage synchronously before
+    // resolving (when email confirmation is OFF, which it is). Read it
+    // back via our lock-free helper rather than auth.getSession().
+    const session = readStoredSession();
+    if (!session) {
+      // Should be unreachable — keep a stash so /admin/pending can recover.
+      try {
+        window.localStorage.setItem(
+          "pendingContribution",
+          JSON.stringify({ username: normalized, contribution: contribution.trim() }),
+        );
+      } catch { /* */ }
+      setError("Signup created the account but no session was returned. Try signing in.");
+      setLoading(false);
+      return;
     }
+
+    const insertErr = await insertAdminSignup(session, normalized, contribution.trim());
+    if (insertErr) {
+      // Stash the contribution so /admin/pending's recovery flow can retry.
+      try {
+        window.localStorage.setItem(
+          "pendingContribution",
+          JSON.stringify({ username: normalized, contribution: contribution.trim() }),
+        );
+      } catch { /* */ }
+      setError(insertErr);
+      setLoading(false);
+      return;
+    }
+
+    notifyAuthChange();
+    router.replace("/admin/pending");
   }
 
   return (
@@ -134,15 +152,19 @@ export default function AdminSignUpPage() {
         </p>
 
         <form onSubmit={handleSubmit} className="flex flex-col" style={{ gap: 14 }}>
-          <Field label="Username (your email)">
+          <Field label="Username" hint={USERNAME_HINT}>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
               autoFocus
-              placeholder="name@example.com"
+              minLength={3}
+              maxLength={32}
+              placeholder="yourname"
+              spellCheck={false}
+              autoCapitalize="none"
               style={inputStyle}
             />
           </Field>
@@ -229,13 +251,29 @@ export default function AdminSignUpPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="flex flex-col" style={{ gap: 4 }}>
       <span className="t-cap t-up" style={{ color: "var(--text-tertiary)" }}>
         {label}
       </span>
       {children}
+      {hint && (
+        <span
+          className="t-cap"
+          style={{ color: "var(--text-tertiary)", fontSize: 11, marginTop: 2 }}
+        >
+          {hint}
+        </span>
+      )}
     </label>
   );
 }

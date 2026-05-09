@@ -3,15 +3,21 @@
 // (Terms of Service). Bracketed values are placeholders Omar will fill in.
 // =============================================================================
 
+// Single Reddit handle is the project's only contact channel — every
+// legal/contact reference funnels through u/Ob344. We deliberately don't
+// publish an email address.
+export const REDDIT_CONTACT_URL = "https://www.reddit.com/user/Ob344/";
+const REDDIT_CONTACT_LABEL      = "u/Ob344 on Reddit";
+
 export const PLACEHOLDERS = {
-  effectiveDate: "[effective date]",
-  contactEmail: "[contact email]",
-  securityEmail: "[security email]",
-  pressEmail: "[press email]",
-  correctionsEmail: "[corrections email]",
-  privacyEmail: "[privacy email]",
-  mailingAddress: "[mailing address]",
-  bmcHandle: "omarbafagih",
+  effectiveDate:    "[effective date]",
+  contactEmail:     REDDIT_CONTACT_LABEL,
+  securityEmail:    REDDIT_CONTACT_LABEL,
+  pressEmail:       REDDIT_CONTACT_LABEL,
+  correctionsEmail: REDDIT_CONTACT_LABEL,
+  privacyEmail:     REDDIT_CONTACT_LABEL,
+  mailingAddress:   REDDIT_CONTACT_LABEL,
+  bmcHandle:        "omarbafagih",
 } as const;
 
 // -----------------------------------------------------------------------------
@@ -242,13 +248,12 @@ export const termsContent = {
         "Entire agreement. These Terms, together with the Disclaimer, constitute the entire agreement between you and us regarding the Service.",
         "No waiver. Failure to enforce any provision is not a waiver.",
         "Assignment. You may not assign these Terms without our prior written consent. We may assign freely.",
-        `Notices. Notices to you may be sent to the email associated with your account or by posting on the Service. Notices to us must be sent to ${PLACEHOLDERS.mailingAddress} with a copy to ${PLACEHOLDERS.contactEmail}.`,
+        `Notices. Notices to you may be posted on the Service or surfaced in-app. Notices to us must be sent via ${PLACEHOLDERS.contactEmail}.`,
         "Language. These Terms are in English. Les parties confirment leur volonté que cette convention soit rédigée en langue anglaise. Translations are for convenience; the English version controls.",
       ],
       tail: [
         "Contact.",
         "Omar Bafagih, doing business as HantaVirusTrack",
-        PLACEHOLDERS.mailingAddress,
         PLACEHOLDERS.contactEmail,
       ],
     },
@@ -262,7 +267,7 @@ export const termsContent = {
 export const privacyContent = {
   effectiveDate: PLACEHOLDERS.effectiveDate,
   paragraphs: [
-    `HantaVirusTrack is operated from Ontario, Canada and complies with Canada's Personal Information Protection and Electronic Documents Act (PIPEDA). We collect minimal personal information — your email address when you sign up, the coordinates of any watch zones you create, and the contents of any case submissions or contact-form messages you send us. We use this information solely to operate the Service. We do not sell personal information. Our sub-processors are Vercel, Supabase, Mapbox, Resend, Twilio (when SMS is enabled), Sentry, Cloudflare, and Buy Me a Coffee — most are located in the United States. To request access to, correction of, or deletion of your data, email ${PLACEHOLDERS.privacyEmail}. Our designated Privacy Officer is Omar Bafagih, reachable at the same address.`,
+    `HantaVirusTrack is operated from Ontario, Canada and complies with Canada's Personal Information Protection and Electronic Documents Act (PIPEDA). We collect minimal personal information — the username you choose at sign-up, the coordinates of any watch zones you create, and the contents of any case submissions you send us. We use this information solely to operate the Service. We do not sell personal information. Our sub-processors are Vercel, Supabase, Mapbox, Sentry, Cloudflare, and Buy Me a Coffee — most are located in the United States. To request access to, correction of, or deletion of your data, message ${PLACEHOLDERS.privacyEmail}. Our designated Privacy Officer is Omar Bafagih, reachable at the same channel.`,
   ],
 };
 
@@ -270,21 +275,14 @@ export const privacyContent = {
 // Contact — FREE_MIGRATION.md §11
 // -----------------------------------------------------------------------------
 
+// Single contact channel: u/Ob344 on Reddit. Each row groups the kind of
+// message that gets a faster reply, but the destination is the same handle.
 export const contactContent = {
   rows: [
-    { label: "General", value: PLACEHOLDERS.contactEmail },
-    { label: "Press", value: PLACEHOLDERS.pressEmail },
-    { label: "Data corrections", value: PLACEHOLDERS.correctionsEmail },
+    { label: "General",              value: PLACEHOLDERS.contactEmail },
+    { label: "Press",                value: PLACEHOLDERS.pressEmail },
+    { label: "Data corrections",     value: PLACEHOLDERS.correctionsEmail },
     { label: "Submission questions", value: PLACEHOLDERS.contactEmail },
-    {
-      label: "Researcher applications",
-      value: `apply at /researcher; questions to ${PLACEHOLDERS.contactEmail}`,
-    },
-    {
-      label: "Security disclosures",
-      value: `${PLACEHOLDERS.securityEmail} — responsible disclosure; please give us a reasonable window to investigate.`,
-    },
-    { label: "Mailing", value: PLACEHOLDERS.mailingAddress },
   ],
 };
 
@@ -310,7 +308,7 @@ export const methodologyContent = {
     "Human moderation. No case appears on the public map without a human moderator's approval. The moderator reviews the source link, confirms the location and date, resolves geocoding ambiguity, and either approves, rejects (with a reason logged), or edits-and-approves. Approved community submissions are attributed in the case detail with the contributor's display name (or anonymously if no display name is set).",
     "Deduplication. Sources frequently re-report the same case; community submissions sometimes overlap with automated ingestion. We use a content-hash dedupe key based on source plus external ID (when stable IDs exist) or country plus state plus date plus count (when they don't). Re-fetches and overlapping submissions update the existing record rather than creating duplicates.",
     "What we don't do. We don't model, project, or predict. We don't compute case-fatality rates or transmission estimates. We don't aggregate community posts into case counts. If you see a number on this site, it came from an official source or a community submission with a verified source link, and is linked back to that source.",
-    `Corrections. If you spot an error, email ${PLACEHOLDERS.correctionsEmail} with the case ID and the issue. We correct on a same-day basis when the source supports it.`,
+    `Corrections. If you spot an error, message ${PLACEHOLDERS.correctionsEmail} with the case ID and the issue. We correct on a same-day basis when the source supports it.`,
   ],
 };
 

@@ -7,7 +7,7 @@ import { format, parseISO } from "date-fns";
 
 import { SiteFooter }            from "@/components/layout/site-footer";
 import { fetchPublishedCases }   from "@/lib/supabase/cases";
-import { getSupabaseClient }     from "@/lib/supabase/client";
+import { readStoredSession, fetchIsApprovedAdmin, AUTH_CHANGE_EVENT } from "@/lib/auth/session";
 import { pillClass, statusLabels } from "@/lib/design-tokens";
 import type { Report }           from "@/lib/types";
 
@@ -31,27 +31,31 @@ export default function CasesListPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Admin-grant check — show the + button only to APPROVED admins, not
-  // anyone with a session. A pending-but-not-approved user should not see
-  // the contribute UI yet (RLS would block them anyway).
+  // Admin-grant check — uses lock-free helpers (raw localStorage + raw
+  // fetch). A pending-but-not-approved user should not see the contribute
+  // UI yet (RLS would block them anyway).
   useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) return;
     let cancelled = false;
     async function refresh() {
-      const { data: sess } = await supabase!.auth.getSession();
-      if (!sess.session) { if (!cancelled) setIsAdmin(false); return; }
-      const { data: grant } = await supabase!
-        .from("admin_grants")
-        .select("user_id")
-        .eq("user_id", sess.session.user.id)
-        .is("revoked_at", null)
-        .maybeSingle();
-      if (!cancelled) setIsAdmin(!!grant);
+      const session = readStoredSession();
+      if (!session) { if (!cancelled) setIsAdmin(false); return; }
+      const ok = await fetchIsApprovedAdmin(session);
+      if (!cancelled) setIsAdmin(ok);
     }
     refresh();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(refresh);
-    return () => { cancelled = true; subscription.unsubscribe(); };
+    // Re-check on cross-tab storage changes AND on same-tab auth events
+    // (sign-in, sign-out, "you've been approved" redirect).
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith("sb-")) refresh();
+    };
+    const onAuthChange = () => refresh();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(AUTH_CHANGE_EVENT, onAuthChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(AUTH_CHANGE_EVENT, onAuthChange);
+    };
   }, []);
 
   // One-shot toast when redirected back from /admin/submit?submitted=1
